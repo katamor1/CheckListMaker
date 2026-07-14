@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - .agent/payload.tar.gz.b64
+      - .agent/**
       - .github/workflows/materialize-checklistmaker-agent.yml
   workflow_dispatch:
 
@@ -34,13 +34,25 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $payload = Join-Path $PWD '.agent/payload.tar.gz.b64'
-          if (-not (Test-Path -LiteralPath $payload)) {
+
+          $chunkDirectory = Join-Path $PWD '.agent/chunks'
+          $singlePayload = Join-Path $PWD '.agent/payload.tar.gz.b64'
+          if (Test-Path -LiteralPath $chunkDirectory) {
+            $chunkFiles = Get-ChildItem -LiteralPath $chunkDirectory -File | Sort-Object Name
+            if ($chunkFiles.Count -eq 0) { throw 'The implementation payload chunk directory is empty.' }
+            $base64 = ($chunkFiles | ForEach-Object { [IO.File]::ReadAllText($_.FullName).Trim() }) -join ''
+          } elseif (Test-Path -LiteralPath $singlePayload) {
+            $base64 = [IO.File]::ReadAllText($singlePayload).Trim()
+          } else {
             throw 'The expected implementation payload is missing.'
           }
 
           $archive = Join-Path $env:RUNNER_TEMP 'checklistmaker-agent-payload.tar.gz'
-          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String([IO.File]::ReadAllText($payload).Trim()))
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($base64))
+          $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '38f1b4d01ca57666ccd6e9b5fa7f5e8a033397fed76232fc0ae8dea15ccb9ccf') {
+            throw "Implementation payload hash mismatch: $hash"
+          }
 
           $entries = tar -tzf $archive
           if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the implementation payload.' }
