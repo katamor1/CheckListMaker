@@ -1,0 +1,113 @@
+name: Materialize CheckListMaker agent workspace
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .agent/payload.tar.gz.b64
+      - .github/workflows/materialize-checklistmaker-agent.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-and-verify:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'agent/implement-checklistmaker-mvp' &&
+      github.actor == 'katamor1'
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate and materialize source snapshot
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $payload = Join-Path $PWD '.agent/payload.tar.gz.b64'
+          if (-not (Test-Path -LiteralPath $payload)) {
+            throw 'The expected implementation payload is missing.'
+          }
+
+          $archive = Join-Path $env:RUNNER_TEMP 'checklistmaker-agent-payload.tar.gz'
+          [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String([IO.File]::ReadAllText($payload).Trim()))
+
+          $entries = tar -tzf $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the implementation payload.' }
+          foreach ($entry in $entries) {
+            $normalized = $entry.Replace('\', '/')
+            if ([string]::IsNullOrWhiteSpace($normalized) -or
+                $normalized.StartsWith('/') -or
+                $normalized -match '(^|/)\.\.(/|$)' -or
+                $normalized -match '^[A-Za-z]:' -or
+                $normalized.StartsWith('.git/')) {
+              throw "Unsafe payload path: $entry"
+            }
+          }
+
+          tar -xzf $archive -C $PWD
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to materialize the implementation payload.' }
+          Remove-Item -LiteralPath '.agent' -Recurse -Force
+          Remove-Item -LiteralPath '.github/workflows/apply-agent-payload.yml' -Force -ErrorAction SilentlyContinue
+
+      - name: Commit materialized source
+        shell: pwsh
+        run: |
+          git config user.name 'checklistmaker-agent'
+          git config user.email 'checklistmaker-agent@users.noreply.github.com'
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'feat: materialize complete CheckListMaker MVP implementation'
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          }
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore
+        shell: pwsh
+        run: ./eng/restore.ps1
+
+      - name: Test and build
+        shell: pwsh
+        run: ./eng/test.ps1
+
+      - name: Verify offline-only source
+        shell: pwsh
+        run: ./eng/verify-no-network.ps1
+
+      - name: Publish single executable
+        shell: pwsh
+        run: ./eng/publish.ps1
+
+      - name: Verify published executable
+        shell: pwsh
+        run: ./eng/verify-publish.ps1
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checklistmaker-materialization-evidence
+          path: |
+            artifacts/test-results/**
+            artifacts/self-check/**
+          if-no-files-found: ignore
+          retention-days: 7
