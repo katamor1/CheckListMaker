@@ -36,6 +36,18 @@ const deferred = (): {
   return { promise, resolve };
 };
 
+const completesWithin = async <T>(operation: Promise<T>, timeoutMs = 250): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error('exclusive operation timed out')), timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, deadline]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+};
+
 const temporaryDirectories: string[] = [];
 
 const createTemporaryDirectory = async (): Promise<string> => {
@@ -104,6 +116,66 @@ describe('ProjectSessionManager', () => {
     expect(firstOperation).toHaveBeenCalledOnce();
     expect(rejectingOperation).toHaveBeenCalledOnce();
     expect(finalOperation).toHaveBeenCalledOnce();
+  });
+
+  it('completes a public save reentered from the same exclusive operation', async () => {
+    const activeResources = resources();
+    const manager = new ProjectSessionManager(() => activeResources);
+    const candidate = manager.createCandidate('document_generation');
+    candidate.project.generation = { ...candidate.project.generation!, instructions: '概要を作成する' };
+    manager.replaceCurrent(candidate);
+    const pickPath = vi.fn().mockResolvedValue('C:\\work\\nested.clmproj');
+
+    const result = await completesWithin(
+      manager.runExclusive(() => manager.saveCurrent(false, pickPath))
+    );
+
+    expect(result).toMatchObject({ canceled: false, path: 'C:\\work\\nested.clmproj' });
+    expect(activeResources.store.saveProject).toHaveBeenCalledOnce();
+    expect(pickPath).toHaveBeenCalledOnce();
+  });
+
+  it('queues an external save while allowing only same-context save reentry inline', async () => {
+    const activeResources = resources();
+    const manager = new ProjectSessionManager(() => activeResources);
+    const candidate = manager.createCandidate('document_generation');
+    candidate.project.generation = { ...candidate.project.generation!, instructions: '概要を作成する' };
+    manager.replaceCurrent(candidate);
+    const ownerStarted = deferred();
+    const allowNestedSave = deferred();
+    const events: string[] = [];
+    vi.mocked(activeResources.store.saveProject).mockImplementation(async (path) => {
+      events.push(`save:${path}`);
+    });
+    const nestedPath = 'C:\\work\\nested.clmproj';
+    const externalPath = 'C:\\work\\external.clmproj';
+    const owner = manager.runExclusive(async () => {
+      events.push('owner:start');
+      ownerStarted.resolve();
+      await allowNestedSave.promise;
+      const result = await manager.saveCurrent(true, vi.fn().mockResolvedValue(nestedPath));
+      events.push('owner:end');
+      return result;
+    });
+
+    await ownerStarted.promise;
+    const external = manager.saveCurrent(true, vi.fn().mockResolvedValue(externalPath));
+    await Promise.resolve();
+    await Promise.resolve();
+    const eventsBeforeOwnerRelease = [...events];
+    allowNestedSave.resolve();
+    const [ownerResult, externalResult] = await completesWithin(Promise.all([owner, external]));
+
+    expect(eventsBeforeOwnerRelease).toEqual(['owner:start']);
+    expect(events).toEqual([
+      'owner:start',
+      `save:${nestedPath}`,
+      'owner:end',
+      `save:${externalPath}`
+    ]);
+    expect(ownerResult.path).toBe(nestedPath);
+    expect(externalResult.path).toBe(externalPath);
+    expect(activeResources.store.saveProject).toHaveBeenCalledTimes(2);
   });
 
   it('routes public saves through the same exclusive session queue', async () => {

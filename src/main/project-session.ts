@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type {
   ChecklistTemplateDefinition,
   ProjectDefinition,
@@ -12,6 +13,13 @@ import { UserFacingError } from '../shared/ipc-result.js';
 import { DocumentRegistry } from './document-registry.js';
 import { ProjectStore } from './project-store.js';
 import { CopilotPackageGenerator } from './package-generator.js';
+
+interface SessionOperationContext {
+  owner: symbol;
+  active: boolean;
+}
+
+const sessionOperationContext = new AsyncLocalStorage<SessionOperationContext>();
 
 export interface ProjectStorePort {
   openProject(path: string): Promise<ProjectDefinition>;
@@ -59,6 +67,7 @@ export const createSessionResources = (): SessionResources => {
 export class ProjectSessionManager {
   #current?: ProjectSessionContext;
   #operationTail: Promise<void> = Promise.resolve();
+  readonly #operationOwner = Symbol('ProjectSessionManager');
 
   constructor(
     private readonly createResources: SessionResourcesFactory = createSessionResources,
@@ -68,9 +77,30 @@ export class ProjectSessionManager {
   hasCurrent(): boolean { return this.#current !== undefined; }
 
   runExclusive<T>(operation: () => T): Promise<Awaited<T>> {
-    const result = this.#operationTail.then(operation, operation);
+    const activeContext = sessionOperationContext.getStore();
+    if (activeContext?.owner === this.#operationOwner && activeContext.active) {
+      return this.#invokeOperation(operation);
+    }
+
+    const execute = (): Promise<Awaited<T>> => {
+      const context: SessionOperationContext = { owner: this.#operationOwner, active: true };
+      return sessionOperationContext.run(context, () =>
+        this.#invokeOperation(operation).finally(() => {
+          context.active = false;
+        })
+      );
+    };
+    const result = this.#operationTail.then(execute, execute);
     this.#operationTail = result.then(() => undefined, () => undefined);
-    return Promise.resolve(result);
+    return result;
+  }
+
+  #invokeOperation<T>(operation: () => T): Promise<Awaited<T>> {
+    try {
+      return Promise.resolve(operation());
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 
   requireCurrent(): ProjectSessionContext {
