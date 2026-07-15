@@ -11,6 +11,7 @@ on:
       - vite.config.ts
       - src/**
       - scripts/**
+      - samples/**
       - tests/**
       - .github/workflows/electron-ci.yml
   workflow_dispatch:
@@ -21,7 +22,7 @@ permissions:
 jobs:
   verify:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -31,9 +32,16 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Set up Python 3.12 for sample validation
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install dependencies
         shell: pwsh
-        run: npm install --no-audit --no-fund
+        run: |
+          npm install --no-audit --no-fund
+          python -m pip install --disable-pip-version-check -r samples/tools/requirements.txt
 
       - name: Prepare diagnostic directory
         shell: pwsh
@@ -45,10 +53,18 @@ jobs:
           npm run typecheck 2>&1 | Tee-Object -FilePath artifacts/ci/typecheck.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run tests
+      - name: Run Electron tests
         shell: pwsh
         run: |
           npm test 2>&1 | Tee-Object -FilePath artifacts/ci/test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate reusable sample catalog
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests/sample_catalog -p "test_*.py" -v 2>&1 | Tee-Object -FilePath artifacts/ci/sample-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python samples/validate_samples.py --root . 2>&1 | Tee-Object -FilePath artifacts/ci/sample-validation.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build production application

@@ -1,0 +1,13 @@
+[
+  {
+    "id": "ja-machine-control-design-review",
+    "manifestPath": "samples/ja-machine-control-design-review/sample-manifest.json",
+    "title": "設備状態監視機能 基本設計レビュー",
+    "description": "既存文書レビューと文書生成を確認する日本語デモ",
+    "modes": [
+      "existing_document",
+      "document_generation"
+    ],
+    "status": "active"
+  }
+]
