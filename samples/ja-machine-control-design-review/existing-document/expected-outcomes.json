@@ -68,7 +68,7 @@
       "expectedJudgment": "invalid",
       "repairBehavior": "auto_fix",
       "effectiveRepairPolicy": "auto_fix",
-      "example": "参考設計書の 500 ms より拘束力のある品質保証規程の 250 ms 以下を優先する。対象文書の 500 ms は上位資料と不一致のため、不適合とする。",
+      "example": "参考設計書の 500 ms より拘束力のある品質保証規程の 250 ms 以下を優先する。対象文書の 500 ms は上位資料と不一致のため、不適合とする。上位資料の値に基づく単一値の置換であり、対象箇所を安全に特定できる場合だけ自動修正する。",
       "referenceResolution": {
         "authorityOrder": [
           "binding",

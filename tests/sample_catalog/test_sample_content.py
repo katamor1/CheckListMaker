@@ -25,6 +25,108 @@ class SampleContentTests(unittest.TestCase):
         "## 6. スケジュール",
         "## 7. 承認",
     )
+    CATALOG_README_SNAPSHOT = (
+        "# デモサンプルカタログ\n"
+        "\n"
+        "このディレクトリは、CheckListMaker の既存文書レビューと文書生成を説明するための"
+        "デモサンプルを収録します。各サンプルは `catalog.json` から "
+        "`sample-manifest.json` を参照し、manifest に記録されたファイルのパス、サイズ、"
+        "SHA-256、メディア種別、参考資料の権威レベル、モード別の入口を検証できる構成です。\n"
+        "\n"
+        "カタログ登録後の検証には `samples/validate_samples.py` を使用します。"
+        "リポジトリルートで次を実行してください。\n"
+        "\n"
+        "```text\n"
+        "python3 samples/validate_samples.py --root .\n"
+        "```\n"
+        "\n"
+        "検証はカタログと manifest の構造、相互参照、ファイルの完全性を確認します。"
+        "文書本文の意味的な正しさを判定するものではありません。\n"
+        "\n"
+        "このカタログには、編集可能なプロジェクトまたはチェックリストの保存物である "
+        "`.clmproj` と `.clmcheck` を登録しません。また、`result.json` を含む"
+        "実行後の結果ファイルも登録しません。\n"
+    )
+    SCENARIO_README_SNAPSHOT = (
+        "# 設備状態監視機能 基本設計書レビュー\n"
+        "\n"
+        "架空の機械制御ソフトウェア「設備状態監視機能」を題材に、既存文書レビューと"
+        "文書生成を説明するデモです。固有名詞、組織、担当者、管理番号、日付、連絡先、"
+        "性能値を含むすべてのデータは架空であり、実在の製品、顧客、規程、"
+        "プロジェクトから転用していません。\n"
+        "\n"
+        "## デモモード\n"
+        "\n"
+        "- `existing_document`: "
+        "`existing-document/target/basic-design-before-review.docx`"
+        "（`basic-design-before-review.docx`）をレビュー前の DOCX 主対象として評価します。\n"
+        "- `document_generation`: `generation/document-request.json` の依頼と同じ"
+        "参考資料群を根拠に、DOCX の基本設計書初稿を生成します。\n"
+        "\n"
+        "## 参考資料と優先順位\n"
+        "\n"
+        "四つの参考資料は常に読み取り専用です。権威レベルの "
+        "`binding > approved > working > reference` を先に比較し、"
+        "同じ権威レベルでは数値優先順位の大きい資料を優先します。\n"
+        "\n"
+        "| ファイル | 権威レベル | 優先順位 | 用途 |\n"
+        "|---|---|---:|---|\n"
+        "| `quality-assurance-policy.pdf` | `binding` | 100 | 必須品質規則と禁止事項 |\n"
+        "| `basic-design-template.md` | `approved` | 80 | 必須章、記載項目、順序 |\n"
+        "| `control-terminology.txt` | `working` | 60 | 用語と表記の統一 |\n"
+        "| `reference-design.docx` | `reference` | 40 | "
+        "記述例。上位資料との矛盾時は採用しない |\n"
+        "\n"
+        "参考資料そのものは修正対象にしません。PDF である "
+        "`quality-assurance-policy.pdf` は評価と参照にだけ使用し、編集できません。\n"
+        "\n"
+        "## 期待結果の扱い\n"
+        "\n"
+        "`existing-document/expected-outcomes.json`（`expected-outcomes.json`）は"
+        "デモ内容を説明するための非権威データです。AI への入力ではありません。"
+        "また、実行によって生成された権威ある結果ではありません。正式な "
+        "`result.json` は Plan 3 の OutputContract が利用可能になるまで配置しません。\n"
+    )
+    EXPECTED_CONDITION_EXAMPLES = {
+        "COND-0001": (
+            "目的には設備状態監視の対象と確認可能な達成事項が具体的に記載されているため、"
+            "適合とする。修正方針はプロジェクト既定を継承する。"
+        ),
+        "COND-0002": (
+            "適用範囲に対象はあるが除外の明示がないため、不適合とする。"
+            "原文は変更せず、除外の追記案だけを示す。"
+        ),
+        "COND-0003": (
+            "禁止された曖昧表現「適切に」を検出したため、不適合とする。"
+            "根拠が揃い安全に置換できる場合だけ自動修正する。"
+        ),
+        "COND-0004": (
+            "主要パラメータの監視周期 500 ms は上限 250 ms を超えるため、"
+            "不適合とする。上位資料の値を根拠に安全な場合だけ自動修正する。"
+        ),
+        "COND-0005": (
+            "最終承認者を特定できないため、情報不足として停止する。"
+            "承認者を推測せず、問題、根拠、確認事項だけを記録する。"
+        ),
+        "COND-0006": (
+            "改訂日 2026-06-30 は基準日 2026-07-01 より前であるため、"
+            "不適合とする。日付の原文変更や具体的な置換案は生成しない。"
+        ),
+        "COND-0007": (
+            "管理番号 DMS-2026 は DMS-#### 形式に一致するため、適合とする。"
+            "明示指定どおり原文は変更しない。"
+        ),
+        "COND-0008": (
+            "機密区分「社内」は許可値に含まれるため、適合とする。"
+            "明示指定どおり原文は変更しない。"
+        ),
+        "COND-0009": (
+            "参考設計書の 500 ms より拘束力のある品質保証規程の 250 ms 以下を優先する。"
+            "対象文書の 500 ms は上位資料と不一致のため、不適合とする。"
+            "上位資料の値に基づく単一値の置換であり、対象箇所を安全に特定できる場合だけ"
+            "自動修正する。"
+        ),
+    }
 
     @staticmethod
     def read(path):
@@ -50,11 +152,82 @@ class SampleContentTests(unittest.TestCase):
     @staticmethod
     def markdown_headings(text):
         headings = []
+        fence_character = None
+        fence_length = 0
+        previous_setext_candidate = None
         for line in text.splitlines():
-            match = re.match(r"^(#{1,6})[ \t]+", line)
-            if match is not None:
-                headings.append((len(match.group(1)), line))
+            if fence_character is not None:
+                closing_fence = re.match(
+                    rf"^ {{0,3}}{re.escape(fence_character)}"
+                    rf"{{{fence_length},}}[ \t]*$",
+                    line,
+                )
+                if closing_fence is not None:
+                    fence_character = None
+                    fence_length = 0
+                previous_setext_candidate = None
+                continue
+
+            opening_fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+            if (
+                    opening_fence is not None
+                    and not (
+                        opening_fence.group(1)[0] == "`"
+                        and "`" in opening_fence.group(2)
+                    )
+            ):
+                fence = opening_fence.group(1)
+                fence_character = fence[0]
+                fence_length = len(fence)
+                previous_setext_candidate = None
+                continue
+
+            atx_heading = re.match(
+                r"^ {0,3}(#{1,6})(?:[ \t]+(.*?)|[ \t]*)$",
+                line,
+            )
+            if atx_heading is not None:
+                title = atx_heading.group(2) or ""
+                title = re.sub(r"[ \t]+#+[ \t]*$", "", title).strip()
+                headings.append((len(atx_heading.group(1)), title))
+                previous_setext_candidate = None
+                continue
+
+            setext_underline = re.match(r"^ {0,3}(=+|-+)[ \t]*$", line)
+            if setext_underline is not None:
+                if previous_setext_candidate is not None:
+                    level = 1 if setext_underline.group(1)[0] == "=" else 2
+                    headings.append((level, previous_setext_candidate))
+                previous_setext_candidate = None
+                continue
+
+            if (
+                    line.strip()
+                    and not line.startswith("    ")
+                    and not line.startswith("\t")
+            ):
+                previous_setext_candidate = line.strip()
+            else:
+                previous_setext_candidate = None
         return headings
+
+    def template_heading_contract_matches(self, text):
+        expected = [
+            (1, "基本設計書テンプレート"),
+            *[
+                (2, heading.removeprefix("## "))
+                for heading in self.SECTION_HEADINGS
+            ],
+        ]
+        actual = [
+            heading for heading in self.markdown_headings(text)
+            if heading[0] in (1, 2)
+        ]
+        return expected == actual
+
+    @staticmethod
+    def readme_matches_snapshot(text, expected):
+        return text == expected
 
     @staticmethod
     def markdown_h2_section(text, heading):
@@ -95,15 +268,57 @@ class SampleContentTests(unittest.TestCase):
     def test_template_has_exact_h1_and_ordered_h2_headings(self):
         path = self.SCENARIO_ROOT / "references/basic-design-template.md"
         text = self.read(path)
-        h1_and_h2_lines = [
-            line for level, line in self.markdown_headings(text)
-            if level in (1, 2)
-        ]
+        self.assertTrue(self.template_heading_contract_matches(text))
+
+    def test_heading_scanner_recognizes_atx_setext_and_ignores_fences(self):
+        probe = (
+            "   # ATX H1 ###\n"
+            "  ## ATX H2 ##\n"
+            "Setext H1\n"
+            "   ===\n"
+            "Setext H2\n"
+            "---\n"
+            "```markdown\n"
+            "# fenced ATX\n"
+            "fenced setext\n"
+            "===\n"
+            "```\n"
+            "~~~text\n"
+            "## fenced H2\n"
+            "~~~\n"
+        )
 
         self.assertEqual(
-            ["# 基本設計書テンプレート", *self.SECTION_HEADINGS],
-            h1_and_h2_lines,
+            [
+                (1, "ATX H1"),
+                (2, "ATX H2"),
+                (1, "Setext H1"),
+                (2, "Setext H2"),
+            ],
+            self.markdown_headings(probe),
         )
+
+    def test_template_heading_contract_rejects_equivalent_extra_headings(self):
+        path = self.SCENARIO_ROOT / "references/basic-design-template.md"
+        template = self.read(path)
+        mutations = (
+            template + "\n   # 基本設計書テンプレート #\n",
+            template + "\n   ## 1. 目的 ##\n",
+            template + "\n基本設計書テンプレート\n===\n",
+            template + "\n1. 目的\n---\n",
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation[len(template):]):
+                self.assertFalse(
+                    self.template_heading_contract_matches(mutation))
+
+        fenced_equivalents = (
+            template
+            + "\n```markdown\n# 基本設計書テンプレート\n"
+            + "1. 目的\n---\n```\n"
+        )
+        self.assertTrue(
+            self.template_heading_contract_matches(fenced_equivalents))
 
     def test_template_requires_scope_management_and_approval_metadata(self):
         path = self.SCENARIO_ROOT / "references/basic-design-template.md"
@@ -137,6 +352,7 @@ class SampleContentTests(unittest.TestCase):
 
     def test_catalog_readme_discloses_validation_and_unregistered_outputs(self):
         text = self.read(self.SAMPLES_ROOT / "README.md")
+        self.assertEqual(self.CATALOG_README_SNAPSHOT, text)
         paragraphs = [paragraph.strip() for paragraph in text.split("\n\n")]
         expected_validation_paragraph = (
             "検証はカタログと manifest の構造、相互参照、ファイルの完全性を確認します。"
@@ -168,8 +384,45 @@ class SampleContentTests(unittest.TestCase):
             paragraphs,
         )
 
+    def test_readme_snapshots_reject_contradictions_anywhere(self):
+        catalog_mutations = (
+            self.CATALOG_README_SNAPSHOT
+            + "\nこのカタログには結果ファイルも登録します。\n",
+            self.CATALOG_README_SNAPSHOT.replace(
+                "検証はカタログと manifest の構造",
+                "検証は文書本文の意味的な正しさも保証します。\n\n"
+                "検証はカタログと manifest の構造",
+            ),
+        )
+        scenario_mutations = (
+            self.SCENARIO_README_SNAPSHOT
+            + "\n一部のデータは実在の顧客資料から転用しています。\n",
+            self.SCENARIO_README_SNAPSHOT.replace(
+                "四つの参考資料は常に読み取り専用です。",
+                "必要に応じて参考資料を編集します。\n\n"
+                "四つの参考資料は常に読み取り専用です。",
+            ),
+            self.SCENARIO_README_SNAPSHOT
+            + "\nPDF は編集できます。\n",
+            self.SCENARIO_README_SNAPSHOT.replace(
+                "AI への入力ではありません。",
+                "AI への入力であり、権威ある結果です。\n\n"
+                "AI への入力ではありません。",
+            ),
+        )
+
+        for mutation in catalog_mutations:
+            with self.subTest(readme="catalog", mutation=mutation):
+                self.assertFalse(self.readme_matches_snapshot(
+                    mutation, self.CATALOG_README_SNAPSHOT))
+        for mutation in scenario_mutations:
+            with self.subTest(readme="scenario", mutation=mutation):
+                self.assertFalse(self.readme_matches_snapshot(
+                    mutation, self.SCENARIO_README_SNAPSHOT))
+
     def test_scenario_readme_discloses_data_targets_and_read_only_sources(self):
         text = self.read(self.SCENARIO_ROOT / "README.md")
+        self.assertEqual(self.SCENARIO_README_SNAPSHOT, text)
         expected_intro = (
             "架空の機械制御ソフトウェア「設備状態監視機能」を題材に、既存文書レビューと"
             "文書生成を説明するデモです。固有名詞、組織、担当者、管理番号、日付、連絡先、"
@@ -369,7 +622,10 @@ class SampleContentTests(unittest.TestCase):
             ),
             "COND-0009": (
                 "invalid", "auto_fix", "auto_fix",
-                ("参考設計書", "品質保証規程", "優先する", "上位資料", "不適合とする"),
+                (
+                    "参考設計書", "品質保証規程", "優先する", "上位資料",
+                    "不適合とする", "単一値の置換", "安全に特定", "自動修正",
+                ),
             ),
         }
 
@@ -394,6 +650,18 @@ class SampleContentTests(unittest.TestCase):
                     self.assertIn(phrase, example)
                 if judgment == "valid":
                     self.assertNotIn("不適合とする", example)
+
+    def test_condition_examples_match_exact_per_id_snapshots(self):
+        path = self.SCENARIO_ROOT / "existing-document/expected-outcomes.json"
+        conditions = self.read_json(path)["conditions"]
+
+        self.assertEqual(
+            self.EXPECTED_CONDITION_EXAMPLES,
+            {
+                condition["conditionId"]: condition.get("example")
+                for condition in conditions
+            },
+        )
 
     def test_expected_outcomes_cover_inherited_and_all_repair_policies(self):
         path = self.SCENARIO_ROOT / "existing-document/expected-outcomes.json"
@@ -434,6 +702,8 @@ class SampleContentTests(unittest.TestCase):
             condition["example"],
         )
         self.assertIn("上位資料と不一致", condition["example"])
+        self.assertIn("単一値の置換", condition["example"])
+        self.assertIn("安全に特定できる場合だけ自動修正", condition["example"])
         self.assertEqual("invalid", condition["expectedJudgment"])
         self.assertEqual(
             {
