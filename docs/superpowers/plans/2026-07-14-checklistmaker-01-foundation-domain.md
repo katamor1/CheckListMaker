@@ -124,7 +124,7 @@ git commit -m "build: scaffold CheckListMaker solution"
 public void CheckIds(string value, bool expected) => Assert.AreEqual(expected, IdentifierRules.IsCheckItemId(value));
 ```
 
-Add equivalent tests for `COND-01` and `REF-001`.
+Add equivalent tests for `COND-0001` and `REF-001`.
 
 - [ ] **Step 2: Run and confirm failure**
 

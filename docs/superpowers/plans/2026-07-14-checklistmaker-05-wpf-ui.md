@@ -187,7 +187,7 @@ git commit -m "feat: add project workspace editors"
 
 - [ ] **Step 1: Write item tests**
 
-New IDs are next unused `CHK-####`; duplicate gets a fresh ID and cloned conditions with fresh `COND-##`; delete adds IDs to retired sets; reorder changes display/serialization order; item fields map required/N/A/logic/policy inheritance/notes.
+New IDs are next unused `CHK-####`; duplicate gets a fresh ID and cloned conditions with fresh `COND-####`; delete adds IDs to retired sets; reorder changes display/serialization order; item fields map required/N/A/logic/policy inheritance/notes.
 
 - [ ] **Step 2: Run and confirm failure**
 

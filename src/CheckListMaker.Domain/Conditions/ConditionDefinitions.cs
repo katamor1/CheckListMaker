@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using CheckListMaker.Domain.Scopes;
+using CheckListMaker.Domain.Serialization;
 namespace CheckListMaker.Domain.Conditions;
 public enum TextMatchMode { All, Any }
 public enum NumericOperator { Equal, NotEqual, LessThan, LessThanOrEqual, GreaterThan, GreaterThanOrEqual, Between }
@@ -37,8 +38,11 @@ public sealed record NumberCondition : ConditionDefinition
 {
     public required string Subject { get; init; }
     public NumericOperator Operator { get; init; }
+    [JsonConverter(typeof(NormalizedNullableDecimalStringConverter))]
     public decimal? Value { get; init; }
+    [JsonConverter(typeof(NormalizedNullableDecimalStringConverter))]
     public decimal? Minimum { get; init; }
+    [JsonConverter(typeof(NormalizedNullableDecimalStringConverter))]
     public decimal? Maximum { get; init; }
     public string? Unit { get; init; }
 }
