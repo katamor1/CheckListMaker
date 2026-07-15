@@ -2,6 +2,7 @@ import contextlib
 import hashlib
 import io
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -527,11 +528,33 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
             }),
         )
 
+    def append_matching_sample(self, root, sample_id, directory_name):
+        destination = root / "samples" / directory_name
+        shutil.copytree(self.sample_directory(root), destination)
+        manifest_path = destination / "sample-manifest.json"
+        manifest = self.read_json(manifest_path)
+        manifest["id"] = sample_id
+        self.write_json(manifest_path, manifest)
+
+        catalog = self.read_json(self.catalog_path(root))
+        entry = dict(catalog[0])
+        entry["id"] = sample_id
+        entry["manifestPath"] = (
+            f"samples/{directory_name}/sample-manifest.json")
+        catalog.append(entry)
+        self.write_json(self.catalog_path(root), catalog)
+
     def assert_issue(self, root, expected_code):
         report = validate_catalog(root)
         self.assertEqual(1, report.exit_code)
         self.assertIn(expected_code, [issue.code for issue in report.issues])
         return report
+
+    def assert_diagnostic(self, report, code, location, message):
+        self.assertIn(
+            ValidationIssue(code, location, message),
+            report.issues,
+        )
 
     def test_valid_format_1_catalog_and_manifest_pass(self):
         root = self.make_repo()
@@ -788,24 +811,78 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
                 )
                 self.assert_issue(root, expected_code)
 
-    def test_catalog_ids_are_sorted_unique_and_valid(self):
-        cases = (
-            ("unsorted", "sample-0", "VALUE_INVALID"),
-            ("duplicate", "sample-a", "VALUE_INVALID"),
-            ("case-insensitive duplicate", "SAMPLE-A", "VALUE_INVALID"),
-            ("invalid pattern", "sample_a", "VALUE_INVALID"),
+    def test_catalog_ids_must_be_strictly_ascending(self):
+        root = self.make_repo()
+        self.append_matching_sample(root, "sample-0", "sample-zero")
+
+        report = validate_catalog(root)
+
+        self.assertEqual(1, report.exit_code)
+        self.assert_diagnostic(
+            report,
+            "VALUE_INVALID",
+            "catalog#/1/id",
+            "catalog IDs must be strictly ascending",
         )
-        for label, second_id, expected_code in cases:
-            with self.subTest(label=label):
-                root = self.make_repo()
 
-                def mutation(catalog):
-                    second = dict(catalog[0])
-                    second["id"] = second_id
-                    catalog.append(second)
+    def test_exact_duplicate_catalog_id_is_not_strictly_ascending(self):
+        root = self.make_repo()
+        self.append_matching_sample(root, "sample-a", "sample-duplicate")
 
-                self.mutate_catalog(root, mutation)
-                self.assert_issue(root, expected_code)
+        report = validate_catalog(root)
+
+        self.assertEqual(1, report.exit_code)
+        self.assert_diagnostic(
+            report,
+            "VALUE_INVALID",
+            "catalog#/1/id",
+            "catalog IDs must be strictly ascending",
+        )
+
+    def test_catalog_ids_must_be_unique_ignoring_case(self):
+        root = self.make_repo()
+        self.append_matching_sample(root, "SAMPLE-A", "sample-upper")
+        catalog = self.read_json(self.catalog_path(root))
+        self.write_json(self.catalog_path(root), [catalog[1], catalog[0]])
+
+        report = validate_catalog(root)
+
+        self.assertEqual(1, report.exit_code)
+        self.assert_diagnostic(
+            report,
+            "VALUE_INVALID",
+            "catalog#/1/id",
+            "catalog IDs must be unique ignoring case",
+        )
+        self.assertNotIn(
+            ValidationIssue(
+                "VALUE_INVALID",
+                "catalog#/1/id",
+                "catalog IDs must be strictly ascending",
+            ),
+            report.issues,
+        )
+
+    def test_catalog_id_must_match_pattern(self):
+        root = self.make_repo()
+        self.mutate_catalog(
+            root,
+            lambda catalog: catalog[0].update({"id": "sample_a"}),
+        )
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest.update({"id": "sample_a"}),
+        )
+
+        report = validate_catalog(root)
+
+        self.assertEqual(1, report.exit_code)
+        self.assert_diagnostic(
+            report,
+            "VALUE_INVALID",
+            "catalog#/0/id",
+            "must match the catalog ID pattern",
+        )
 
     def test_manifest_paths_are_case_insensitively_unique(self):
         root = self.make_repo()
@@ -850,7 +927,7 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
         self.assertIn(
             "VALUE_INVALID", [issue.code for issue in report.issues])
 
-    def test_manifest_version_language_modes_and_catalog_values_are_exact(self):
+    def test_manifest_version_and_language_are_exact(self):
         manifest_cases = (
             ("sampleFormatVersion", "2.0"),
             ("language", "en"),
@@ -865,19 +942,52 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
                 )
                 self.assert_issue(root, "VALUE_INVALID")
 
+    def test_catalog_values_report_the_direct_field_diagnostic(self):
         catalog_cases = (
-            ("empty modes", "modes", []),
+            (
+                "empty modes",
+                "modes",
+                [],
+                "catalog#/0/modes",
+                "must contain at least one mode",
+            ),
             (
                 "duplicate modes",
                 "modes",
                 ["existing_document", "existing_document"],
+                "catalog#/0/modes/1",
+                "modes must be unique",
             ),
-            ("unknown mode", "modes", ["review"]),
-            ("inactive", "status", "inactive"),
-            ("empty title", "title", ""),
-            ("empty description", "description", ""),
+            (
+                "unknown mode",
+                "modes",
+                ["review"],
+                "catalog#/0/modes/0",
+                "mode is not supported",
+            ),
+            (
+                "inactive",
+                "status",
+                "inactive",
+                "catalog#/0/status",
+                "status must equal active",
+            ),
+            (
+                "empty title",
+                "title",
+                "",
+                "catalog#/0/title",
+                "must be a nonempty string",
+            ),
+            (
+                "empty description",
+                "description",
+                "",
+                "catalog#/0/description",
+                "must be a nonempty string",
+            ),
         )
-        for label, field, value in catalog_cases:
+        for label, field, value, location, message in catalog_cases:
             with self.subTest(label=label):
                 root = self.make_repo()
                 self.mutate_catalog(
@@ -885,7 +995,10 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
                     lambda catalog, field=field, value=value: catalog[0].update(
                         {field: value}),
                 )
-                self.assert_issue(root, "VALUE_INVALID")
+                report = validate_catalog(root)
+                self.assertEqual(1, report.exit_code)
+                self.assert_diagnostic(
+                    report, "VALUE_INVALID", location, message)
 
     def test_file_inventory_detects_missing_unlisted_and_non_regular_files(self):
         root = self.make_repo()
