@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { createProject } from '../src/shared/defaults.js';
 import { DocumentRegistry } from '../src/main/document-registry.js';
 import { ProjectStore } from '../src/main/project-store.js';
-import { sha256 } from '../src/main/crypto.js';
+import { jsonBytes, sha256 } from '../src/main/crypto.js';
+import { writeArchive } from '../src/main/archive.js';
 import {
   ProjectSessionManager,
   type SessionResources
@@ -23,6 +24,17 @@ const resources = (): SessionResources => ({
     generate: vi.fn()
   }
 });
+
+const deferred = (): {
+  promise: Promise<void>;
+  resolve: () => void;
+} => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 const temporaryDirectories: string[] = [];
 
@@ -54,6 +66,123 @@ describe('ProjectSessionManager', () => {
 
     expect(manager.currentSummary()).toEqual(before);
     expect(candidate.project.mode).toBe('document_generation');
+  });
+
+  it('runs queued operations once in submission order and continues after rejection', async () => {
+    const manager = new ProjectSessionManager(resources);
+    const firstGate = deferred();
+    const calls: string[] = [];
+    const firstOperation = vi.fn(async () => {
+      calls.push('first:start');
+      await firstGate.promise;
+      calls.push('first:end');
+      return 1;
+    });
+    const rejectingOperation = vi.fn(async () => {
+      calls.push('second:reject');
+      throw new Error('expected rejection');
+    });
+    const finalOperation = vi.fn(() => {
+      calls.push('third:complete');
+      return 3;
+    });
+
+    const first = manager.runExclusive(firstOperation);
+    const rejecting = manager.runExclusive(rejectingOperation);
+    const final = manager.runExclusive(finalOperation);
+    const rejection = expect(rejecting).rejects.toThrow('expected rejection');
+    await vi.waitFor(() => expect(calls).toEqual(['first:start']));
+    expect(rejectingOperation).not.toHaveBeenCalled();
+    expect(finalOperation).not.toHaveBeenCalled();
+
+    firstGate.resolve();
+
+    await expect(first).resolves.toBe(1);
+    await rejection;
+    await expect(final).resolves.toBe(3);
+    expect(calls).toEqual(['first:start', 'first:end', 'second:reject', 'third:complete']);
+    expect(firstOperation).toHaveBeenCalledOnce();
+    expect(rejectingOperation).toHaveBeenCalledOnce();
+    expect(finalOperation).toHaveBeenCalledOnce();
+  });
+
+  it('routes public saves through the same exclusive session queue', async () => {
+    const activeResources = resources();
+    const manager = new ProjectSessionManager(() => activeResources);
+    const candidate = manager.createCandidate('document_generation');
+    candidate.project.generation = { ...candidate.project.generation!, instructions: '概要を作成する' };
+    manager.replaceCurrent(candidate);
+    const blockerStarted = deferred();
+    const releaseBlocker = deferred();
+    const blocker = manager.runExclusive(async () => {
+      blockerStarted.resolve();
+      await releaseBlocker.promise;
+    });
+
+    const saving = manager.saveCurrent(true, vi.fn().mockResolvedValue('C:\\work\\queued.clmproj'));
+    await blockerStarted.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    const callsBeforeRelease = vi.mocked(activeResources.store.saveProject).mock.calls.length;
+    releaseBlocker.resolve();
+
+    await blocker;
+    await expect(saving).resolves.toMatchObject({ canceled: false, path: 'C:\\work\\queued.clmproj' });
+    expect(callsBeforeRelease).toBe(0);
+    expect(activeResources.store.saveProject).toHaveBeenCalledOnce();
+  });
+
+  it('serializes concurrent public saves so the final path and project describe the same save', async () => {
+    const activeResources = resources();
+    const firstPath = 'C:\\work\\first.clmproj';
+    const secondPath = 'C:\\work\\second.clmproj';
+    const firstStarted = deferred();
+    const secondStarted = deferred();
+    const releaseFirst = deferred();
+    const releaseSecond = deferred();
+    const startedPaths: string[] = [];
+    vi.mocked(activeResources.store.saveProject).mockImplementation(async (path) => {
+      startedPaths.push(path);
+      if (path === firstPath) {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+        return;
+      }
+      secondStarted.resolve();
+      await releaseSecond.promise;
+    });
+    const timestamps = [
+      new Date('2025-01-02T03:04:05.000Z'),
+      new Date('2025-01-02T03:04:06.000Z')
+    ];
+    let timestampIndex = 0;
+    const manager = new ProjectSessionManager(
+      () => activeResources,
+      () => timestamps[timestampIndex++]!
+    );
+    const candidate = manager.createCandidate('document_generation');
+    candidate.project.generation = { ...candidate.project.generation!, instructions: '概要を作成する' };
+    manager.replaceCurrent(candidate);
+
+    const firstSave = manager.saveCurrent(true, vi.fn().mockResolvedValue(firstPath));
+    const secondSave = manager.saveCurrent(true, vi.fn().mockResolvedValue(secondPath));
+    await firstStarted.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    const pathsBeforeFirstCompletion = [...startedPaths];
+    releaseFirst.resolve();
+    await secondStarted.promise;
+    releaseSecond.resolve();
+    const [firstResult, secondResult] = await Promise.all([firstSave, secondSave]);
+    const final = manager.currentSummary();
+
+    expect(pathsBeforeFirstCompletion).toEqual([firstPath]);
+    expect(startedPaths).toEqual([firstPath, secondPath]);
+    expect(firstResult.summary.path).toBe(firstPath);
+    expect(final.path).toBe(secondPath);
+    expect(final.project).toEqual(secondResult.project);
+    expect(secondResult.summary).toEqual(final);
+    expect(final.project.updatedAt).toBe('2025-01-02T03:04:06.000Z');
   });
 
   it('ignores stale or cross-project draft updates', () => {
@@ -132,6 +261,61 @@ describe('ProjectSessionManager', () => {
     expect(activeResources.store.saveProject).not.toHaveBeenCalled();
   });
 
+  it('keeps the old path and exact snapshot when save-as fails', async () => {
+    const activeResources = resources();
+    vi.mocked(activeResources.store.saveProject).mockRejectedValue(new Error('access denied'));
+    const manager = new ProjectSessionManager(() => activeResources);
+    const candidate = manager.createCandidate('document_generation');
+    candidate.project.generation = { ...candidate.project.generation!, instructions: '概要を作成する' };
+    candidate.path = 'C:\\work\\existing.clmproj';
+    manager.replaceCurrent(candidate);
+    const before = manager.currentSummary();
+
+    await expect(
+      manager.saveCurrent(true, vi.fn().mockResolvedValue('C:\\work\\replacement.clmproj'))
+    ).rejects.toMatchObject({
+      code: 'PROJECT_SAVE_FAILED',
+      message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+    });
+
+    expect(manager.currentSummary()).toEqual(before);
+    expect(manager.currentSummary().path).toBe('C:\\work\\existing.clmproj');
+  });
+
+  it('preserves a draft accepted while an in-flight save later fails', async () => {
+    const activeResources = resources();
+    const saveStarted = deferred();
+    const releaseSave = deferred();
+    vi.mocked(activeResources.store.saveProject).mockImplementation(async () => {
+      saveStarted.resolve();
+      await releaseSave.promise;
+      throw new Error('disk full');
+    });
+    const manager = new ProjectSessionManager(() => activeResources);
+    const candidate = manager.createCandidate('document_generation');
+    candidate.project.generation = { ...candidate.project.generation!, instructions: '概要を作成する' };
+    candidate.path = 'C:\\work\\existing.clmproj';
+    manager.replaceCurrent(candidate);
+
+    const saving = manager.saveCurrent(false, vi.fn());
+    const failure = expect(saving).rejects.toMatchObject({
+      code: 'PROJECT_SAVE_FAILED',
+      message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+    });
+    await saveStarted.promise;
+    const savingProject = manager.currentSummary().project;
+    expect(manager.updateDraft({ ...savingProject, name: '失敗後も残す入力' }, 1)).toBe(true);
+    releaseSave.resolve();
+    await failure;
+
+    expect(manager.currentSummary()).toMatchObject({
+      path: 'C:\\work\\existing.clmproj',
+      dirty: true,
+      revision: 1,
+      project: { name: '失敗後も残す入力' }
+    });
+  });
+
   it('does not overwrite a draft accepted while a save is in flight', async () => {
     const activeResources = resources();
     let signalStarted!: () => void;
@@ -170,6 +354,29 @@ describe('ProjectSessionManager', () => {
     const reopened = await new ProjectStore(new DocumentRegistry()).openProject(projectPath);
 
     expect(reopened).toEqual(project);
+  });
+
+  it('uses one fixed manager timestamp for the save result, snapshot, and reopened project', async () => {
+    const directory = await createTemporaryDirectory();
+    const projectPath = join(directory, 'manager-timestamp.clmproj');
+    const activeRegistry = new DocumentRegistry();
+    const activeResources: SessionResources = {
+      registry: activeRegistry,
+      store: new ProjectStore(activeRegistry),
+      packageGenerator: { generate: vi.fn() }
+    };
+    const fixedNow = new Date('2025-06-07T08:09:10.000Z');
+    const manager = new ProjectSessionManager(() => activeResources, () => fixedNow);
+    const candidate = manager.createCandidate('document_generation');
+    candidate.project.generation = { ...candidate.project.generation!, instructions: '概要を作成する' };
+    manager.replaceCurrent(candidate);
+
+    const result = await manager.saveCurrent(false, vi.fn().mockResolvedValue(projectPath));
+    const reopened = await new ProjectStore(new DocumentRegistry()).openProject(projectPath);
+
+    expect(result.project?.updatedAt).toBe(fixedNow.toISOString());
+    expect(result.project).toEqual(result.summary.project);
+    expect(reopened).toEqual(result.project);
   });
 
   it('restores archive documents with live tokens owned by the fresh registry', async () => {
@@ -229,5 +436,94 @@ describe('ProjectSessionManager', () => {
       '選択文書が現在のプロジェクトと一致しません。文書を選択し直してください。'
     );
     expect(manager.currentSummary()).toEqual(before);
+  });
+
+  it.each(['../../poison.md', 'documents/missing.md'])(
+    'rejects malformed archive topology before looking up stored path %s',
+    async (storedPath) => {
+      const directory = await createTemporaryDirectory();
+      const projectPath = join(directory, 'malformed.clmproj');
+      const project = createProject('existing_document');
+      const malformed = {
+        ...project,
+        target: {
+          token: '',
+          originalFileName: 'target.md',
+          storedPath,
+          mediaType: 'text/markdown',
+          sizeBytes: 4,
+          sha256: 'a'.repeat(64),
+          format: 'md',
+          editable: true
+        },
+        references: null
+      };
+      const { checklist, ...metadata } = malformed;
+      await writeArchive(projectPath, [
+        {
+          path: 'project.json',
+          role: 'project',
+          mediaType: 'application/json',
+          bytes: jsonBytes(metadata),
+          readOnly: true
+        },
+        {
+          path: 'checklist.json',
+          role: 'checklist',
+          mediaType: 'application/json',
+          bytes: jsonBytes(checklist),
+          readOnly: true
+        }
+      ]);
+
+      await expect(new ProjectStore(new DocumentRegistry()).openProject(projectPath)).rejects.toEqual(
+        new Error('プロジェクトデータの構造が不正です。')
+      );
+    }
+  );
+
+  it('isolates active resources when a candidate store mutates its registry before failing', async () => {
+    const activeResources = resources();
+    const candidateResources = resources();
+    const activeBytes = Buffer.from('active');
+    const activeDocument = activeResources.registry.registerBytes({
+      originalFileName: 'active.md',
+      storedPath: 'documents/active.md',
+      mediaType: 'text/markdown',
+      sizeBytes: activeBytes.byteLength,
+      sha256: sha256(activeBytes),
+      format: 'md',
+      editable: true
+    }, activeBytes);
+    let candidateToken = '';
+    vi.mocked(candidateResources.store.openProject).mockImplementation(async () => {
+      const candidateBytes = Buffer.from('candidate');
+      candidateToken = candidateResources.registry.registerBytes({
+        originalFileName: 'candidate.md',
+        storedPath: 'documents/candidate.md',
+        mediaType: 'text/markdown',
+        sizeBytes: candidateBytes.byteLength,
+        sha256: sha256(candidateBytes),
+        format: 'md',
+        editable: true
+      }, candidateBytes).token;
+      throw new Error('broken after registry mutation');
+    });
+    const factory = vi.fn()
+      .mockReturnValueOnce(activeResources)
+      .mockReturnValueOnce(candidateResources);
+    const manager = new ProjectSessionManager(factory);
+    manager.replaceCurrent(manager.createCandidate('document_generation'));
+    const before = manager.currentSummary();
+
+    await expect(manager.loadCandidate('broken.clmproj')).rejects.toMatchObject({
+      code: 'PROJECT_OPEN_FAILED',
+      message: 'プロジェクトを開けませんでした。ファイルが破損しているか、対応していない形式です。'
+    });
+
+    expect(manager.currentSummary()).toEqual(before);
+    expect(activeResources.registry.has(activeDocument.token)).toBe(true);
+    expect(activeResources.registry.has(candidateToken)).toBe(false);
+    expect(candidateResources.registry.has(candidateToken)).toBe(true);
   });
 });

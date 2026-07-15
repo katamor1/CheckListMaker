@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createProject } from '../src/shared/defaults.js';
+import type { ConditionDefinition, ScopeDefinition } from '../src/shared/model.js';
 import {
   assertPersistedProjectDefinition,
   assertProjectDefinition,
@@ -26,6 +27,229 @@ const expectBothInvalid = (value: unknown): void => {
   expect(() => assertProjectDefinition(value)).toThrow('プロジェクトデータの構造が不正です。');
   expect(() => assertPersistedProjectDefinition(value)).toThrow('プロジェクトデータの構造が不正です。');
 };
+
+const entireScope: ScopeDefinition = {
+  type: 'entire_document',
+  onNotFound: 'invalid'
+};
+
+const projectWithCondition = (condition: unknown): unknown => {
+  const project = createProject('existing_document');
+  return {
+    ...project,
+    checklist: {
+      ...project.checklist,
+      items: [{ ...project.checklist.items[0]!, conditions: [condition] }]
+    }
+  };
+};
+
+const scopeCases: Array<{ name: string; valid: ScopeDefinition; malformed: unknown }> = [
+  {
+    name: 'entire_document',
+    valid: entireScope,
+    malformed: { type: 'entire_document', onNotFound: 'skip' }
+  },
+  {
+    name: 'section',
+    valid: {
+      type: 'section',
+      heading: '概要',
+      matchMode: 'semantic',
+      includeSubsections: true,
+      onNotFound: 'needs_information'
+    },
+    malformed: {
+      type: 'section',
+      heading: 42,
+      matchMode: 'exact',
+      includeSubsections: false,
+      onNotFound: 'invalid'
+    }
+  },
+  {
+    name: 'table',
+    valid: {
+      type: 'table',
+      description: '承認一覧',
+      expectedColumns: ['担当者', '日付'],
+      onNotFound: 'invalid'
+    },
+    malformed: {
+      type: 'table',
+      description: '承認一覧',
+      expectedColumns: '担当者',
+      onNotFound: 'invalid'
+    }
+  },
+  {
+    name: 'semantic_locator',
+    valid: {
+      type: 'semantic_locator',
+      description: '結論を述べている箇所',
+      onNotFound: 'needs_information'
+    },
+    malformed: {
+      type: 'semantic_locator',
+      description: false,
+      onNotFound: 'invalid'
+    }
+  }
+];
+
+const conditionCases: Array<{ name: string; valid: ConditionDefinition; malformed: unknown }> = [
+  {
+    name: 'semantic',
+    valid: { id: 'COND-01', type: 'semantic', instruction: '目的が明確であること', scope: entireScope },
+    malformed: { id: 'COND-01', type: 'semantic', instruction: 42, scope: entireScope }
+  },
+  {
+    name: 'required_text',
+    valid: {
+      id: 'COND-01',
+      type: 'required_text',
+      values: ['承認済み'],
+      matchMode: 'all',
+      caseSensitive: false,
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'required_text',
+      values: '承認済み',
+      matchMode: 'all',
+      caseSensitive: false,
+      scope: entireScope
+    }
+  },
+  {
+    name: 'forbidden_text',
+    valid: {
+      id: 'COND-01',
+      type: 'forbidden_text',
+      values: ['未確定'],
+      caseSensitive: true,
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'forbidden_text',
+      values: ['未確定'],
+      caseSensitive: 'yes',
+      scope: entireScope
+    }
+  },
+  {
+    name: 'number',
+    valid: {
+      id: 'COND-01',
+      type: 'number',
+      subject: '承認者数',
+      operator: 'greater_than_or_equal',
+      value: 2,
+      unit: '人',
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'number',
+      subject: false,
+      operator: 'equal',
+      value: 2,
+      scope: entireScope
+    }
+  },
+  {
+    name: 'length_or_count',
+    valid: {
+      id: 'COND-01',
+      type: 'length_or_count',
+      measure: 'headings',
+      operator: 'less_than_or_equal',
+      value: 10,
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'length_or_count',
+      measure: 'bytes',
+      operator: 'equal',
+      value: 10,
+      scope: entireScope
+    }
+  },
+  {
+    name: 'date_or_deadline',
+    valid: {
+      id: 'COND-01',
+      type: 'date_or_deadline',
+      subject: '提出期限',
+      operator: 'on_or_before',
+      value: '2025-12-31',
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'date_or_deadline',
+      subject: 42,
+      operator: 'exists',
+      scope: entireScope
+    }
+  },
+  {
+    name: 'pattern',
+    valid: {
+      id: 'COND-01',
+      type: 'pattern',
+      preset: 'management_number',
+      pattern: '^DOC-[0-9]+$',
+      description: '文書管理番号',
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'pattern',
+      preset: 'management_number',
+      pattern: 42,
+      description: '文書管理番号',
+      scope: entireScope
+    }
+  },
+  {
+    name: 'one_of',
+    valid: {
+      id: 'COND-01',
+      type: 'one_of',
+      subject: '状態',
+      allowedValues: ['承認', '却下'],
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'one_of',
+      subject: '状態',
+      allowedValues: '承認',
+      scope: entireScope
+    }
+  },
+  {
+    name: 'cross_source_consistency',
+    valid: {
+      id: 'COND-01',
+      type: 'cross_source_consistency',
+      instruction: '申請者名が一致すること',
+      sourceIds: ['REF-001'],
+      scope: entireScope
+    },
+    malformed: {
+      id: 'COND-01',
+      type: 'cross_source_consistency',
+      instruction: '申請者名が一致すること',
+      sourceIds: 'REF-001',
+      scope: entireScope
+    }
+  }
+];
 
 describe('assertProjectDefinition', () => {
   it('accepts a structurally valid project even when business validation has issues', () => {
@@ -161,5 +385,39 @@ describe('assertProjectDefinition', () => {
       expect(error).toEqual(new Error('プロジェクトデータの構造が不正です。'));
       expect(String(error)).not.toContain('C:\\private');
     }
+  });
+
+  it.each(scopeCases)('accepts the existing $name scope shape', ({ valid }) => {
+    const project = projectWithCondition({
+      id: 'COND-01',
+      type: 'semantic',
+      instruction: '対象範囲を確認する',
+      scope: valid
+    });
+
+    expect(() => assertProjectDefinition(project)).not.toThrow();
+    expect(() => assertPersistedProjectDefinition(project)).not.toThrow();
+  });
+
+  it.each(scopeCases)('rejects a malformed $name scope-specific field', ({ malformed }) => {
+    const project = projectWithCondition({
+      id: 'COND-01',
+      type: 'semantic',
+      instruction: '対象範囲を確認する',
+      scope: malformed
+    });
+
+    expectBothInvalid(project);
+  });
+
+  it.each(conditionCases)('accepts the existing $name condition shape', ({ valid }) => {
+    const project = projectWithCondition(valid);
+
+    expect(() => assertProjectDefinition(project)).not.toThrow();
+    expect(() => assertPersistedProjectDefinition(project)).not.toThrow();
+  });
+
+  it.each(conditionCases)('rejects a malformed $name condition-specific field', ({ malformed }) => {
+    expectBothInvalid(projectWithCondition(malformed));
   });
 });

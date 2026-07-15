@@ -45,6 +45,7 @@ export interface ProjectSessionContext {
 
 export type SavePathPicker = (defaultName: string) => Promise<string | undefined>;
 export type SessionResourcesFactory = () => SessionResources;
+export type SessionClock = () => Date;
 
 export const createSessionResources = (): SessionResources => {
   const registry = new DocumentRegistry();
@@ -59,7 +60,10 @@ export class ProjectSessionManager {
   #current?: ProjectSessionContext;
   #operationTail: Promise<void> = Promise.resolve();
 
-  constructor(private readonly createResources: SessionResourcesFactory = createSessionResources) {}
+  constructor(
+    private readonly createResources: SessionResourcesFactory = createSessionResources,
+    private readonly clock: SessionClock = () => new Date()
+  ) {}
 
   hasCurrent(): boolean { return this.#current !== undefined; }
 
@@ -149,14 +153,18 @@ export class ProjectSessionManager {
     this.requireCurrent().template = template;
   }
 
-  async saveCurrent(saveAs: boolean, pickPath: SavePathPicker): Promise<SessionSaveResult> {
+  saveCurrent(saveAs: boolean, pickPath: SavePathPicker): Promise<SessionSaveResult> {
+    return this.runExclusive(() => this.#saveCurrent(saveAs, pickPath));
+  }
+
+  async #saveCurrent(saveAs: boolean, pickPath: SavePathPicker): Promise<SessionSaveResult> {
     const current = this.requireCurrent();
     const firstError = validateProject(current.project).find((issue) => issue.severity === 'error');
     if (firstError) throw new UserFacingError('PROJECT_INVALID', `保存できません: ${firstError.message}`);
     const path = saveAs ? await pickPath(current.project.name) : current.path ?? await pickPath(current.project.name);
     if (!path) return { canceled: true, summary: this.currentSummary() };
     const revisionAtStart = current.revision;
-    const project = { ...current.project, updatedAt: new Date().toISOString() };
+    const project = { ...current.project, updatedAt: this.clock().toISOString() };
     try {
       await current.resources.store.saveProject(path, project);
     } catch (error) {
