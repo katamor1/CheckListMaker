@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { ChecklistDefinition, CheckItemDefinition, ConditionDefinition, ProjectDefinition, ProjectMode, ScopeDefinition } from './model.js';
 import { FORMAT_VERSION } from './model.js';
 
@@ -35,7 +34,7 @@ export const createProject = (mode: ProjectMode): ProjectDefinition => {
   const now = new Date().toISOString();
   const common = {
     formatVersion: FORMAT_VERSION,
-    projectId: randomUUID(),
+    projectId: globalThis.crypto.randomUUID(),
     name: '新しいプロジェクト',
     mode,
     references: [],
