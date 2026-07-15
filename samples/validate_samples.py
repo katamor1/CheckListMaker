@@ -42,6 +42,10 @@ AUTHORITY_LEVELS = frozenset({
 })
 CATALOG_ID_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 CATALOG_STATUS = "active"
+# Apply the same lexical integer limit on every supported Python version.
+# This matches CPython's default safety limit without depending on its runtime
+# configuration or on whether ``sys.set_int_max_str_digits`` exists.
+MAX_JSON_INTEGER_DECIMAL_DIGITS = 4_300
 
 _CATALOG_ID_PATTERN = re.compile(CATALOG_ID_PATTERN)
 _REFERENCE_ID_PATTERN = re.compile(r"^REF-[0-9]{3}$")
@@ -123,6 +127,9 @@ def _reject_non_standard_constant(_value: str) -> Any:
 
 
 def _parse_json_integer(value: str) -> int:
+    digit_count = len(value) - int(value.startswith("-"))
+    if digit_count > MAX_JSON_INTEGER_DECIMAL_DIGITS:
+        raise _JsonIntegerLimitError
     try:
         return int(value)
     except ValueError:
@@ -1104,6 +1111,26 @@ class _ArgumentParser(argparse.ArgumentParser):
         raise _CliUsageError(message)
 
 
+def _escape_cli_diagnostic(value: str) -> str:
+    """Escape control and non-printable text before writing CI diagnostics."""
+    escaped = []
+    named_controls = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+    for character in value:
+        if character in named_controls:
+            escaped.append(named_controls[character])
+        elif character.isprintable():
+            escaped.append(character)
+        else:
+            code_point = ord(character)
+            if code_point <= 0xFF:
+                escaped.append(f"\\x{code_point:02x}")
+            elif code_point <= 0xFFFF:
+                escaped.append(f"\\u{code_point:04x}")
+            else:
+                escaped.append(f"\\U{code_point:08x}")
+    return "".join(escaped)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _ArgumentParser()
     parser.add_argument(
@@ -1140,7 +1167,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     for issue in report.issues:
         print(
-            f"ERROR {issue.code} {issue.location}: {issue.message}",
+            f"ERROR {_escape_cli_diagnostic(issue.code)} "
+            f"{_escape_cli_diagnostic(issue.location)}: "
+            f"{_escape_cli_diagnostic(issue.message)}",
             file=sys.stderr)
     print(
         f"FAILED samples={report.sample_count} "

@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -147,6 +148,27 @@ class ValidatorCoreTests(unittest.TestCase):
             catalog_text=f"[{oversized_integer}]\n")
 
         report = validate_catalog(root)
+
+        self.assertEqual(1, report.exit_code)
+        self.assertEqual(
+            ["JSON_INVALID"],
+            [issue.code for issue in report.issues])
+
+    def test_oversized_json_integer_is_rejected_with_runtime_guard_disabled(self):
+        oversized_integer = "9" * 10_000
+        root = self.make_repo(
+            catalog_text=f"[{oversized_integer}]\n")
+        set_limit = getattr(sys, "set_int_max_str_digits", None)
+        get_limit = getattr(sys, "get_int_max_str_digits", None)
+        previous_limit = get_limit() if get_limit is not None else None
+
+        try:
+            if set_limit is not None:
+                set_limit(0)
+            report = validate_catalog(root)
+        finally:
+            if set_limit is not None and previous_limit is not None:
+                set_limit(previous_limit)
 
         self.assertEqual(1, report.exit_code)
         self.assertEqual(
@@ -347,6 +369,28 @@ class ValidatorCoreTests(unittest.TestCase):
             stderr.getvalue())
         self.assertNotIn(str(root), stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_cli_escapes_newline_and_escape_in_unknown_property_name(self):
+        unsafe_property = "bad\n\x1b[31m"
+        entry = self.catalog_entry(
+            "samples/sample-a/sample-manifest.json", "sample-a")
+        entry[unsafe_property] = True
+        root = self.make_repo(catalog=[entry])
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = main(("--root", str(root)))
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertEqual(
+            "ERROR PROPERTY_UNKNOWN catalog#/0/bad\\n\\x1b[31m: "
+            "property is not allowed\n"
+            "FAILED samples=1 files=2 errors=1\n",
+            stderr.getvalue(),
+        )
+        self.assertNotIn("\x1b", stderr.getvalue())
 
     def make_empty_root(self):
         temporary_directory = tempfile.TemporaryDirectory()
