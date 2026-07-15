@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
+  ChecklistDefinition,
   DocumentGenerationDefinition,
   ProjectMode,
+  ReferenceDocumentDefinition,
+  RepairPolicy,
   SessionSnapshot,
   ValidationIssue
 } from '../shared/model.js';
 import { DraftSynchronizer } from './draft-synchronizer.js';
-import { GenerationSettingsForm } from './GenerationSettingsForm.js';
+import { ProjectWorkspace, modeLabel, type WorkspaceSection } from './ProjectWorkspace.js';
+import { appendSelectedReferences } from './reference-editor-model.js';
 import { saveThenExport } from './session-actions.js';
 import { SessionOperationQueue } from './session-operation-queue.js';
 import {
@@ -22,15 +26,13 @@ type Versions = {
   chrome: string;
 };
 
-const modeLabel = (mode: ProjectMode): string =>
-  mode === 'existing_document' ? '既存文書を検証' : '文書を生成して検証';
-
 export const App = () => {
   const [summary, setSummary] = useState<SessionSnapshot | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [versions, setVersions] = useState<Versions | null>(null);
   const [notice, setNotice] = useState('プロジェクトを新規作成するか、既存の.clmprojを開いてください。');
   const [busy, setBusy] = useState(false);
+  const [activeSection, setActiveSection] = useState<WorkspaceSection>('overview');
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
   const summaryRef = useRef<SessionSnapshot | null>(null);
   const synchronizerRef = useRef<DraftSynchronizer | null>(null);
@@ -72,8 +74,6 @@ export const App = () => {
   useEffect(() => orchestrator.subscribeClose(), [orchestrator]);
 
   const project = summary?.project;
-  const errorCount = useMemo(() => issues.filter((issue) => issue.severity === 'error').length, [issues]);
-  const warningCount = issues.length - errorCount;
 
   const createProject = (mode: ProjectMode): void => {
     void orchestrator.runSessionOperation(async () => {
@@ -81,6 +81,7 @@ export const App = () => {
       if (result.canceled || !result.summary) return;
       orchestrator.adoptSummary(result.summary);
       setIssues([]);
+      setActiveSection('overview');
       setLastExportPath(null);
       setNotice(`${modeLabel(mode)}プロジェクトを作成しました。`);
     });
@@ -92,6 +93,7 @@ export const App = () => {
       if (result.canceled || !result.summary) return;
       orchestrator.adoptSummary(result.summary);
       setIssues([]);
+      setActiveSection('overview');
       setLastExportPath(null);
       setNotice('プロジェクトを開きました。');
     });
@@ -113,6 +115,35 @@ export const App = () => {
     }));
   };
 
+  const updateReferences = (references: ReferenceDocumentDefinition[]): void => {
+    orchestrator.commitProject((current) => ({
+      ...current,
+      references,
+      updatedAt: new Date().toISOString()
+    }));
+  };
+
+  const updateChecklist = (checklist: ChecklistDefinition): void => {
+    const availableRoleIds = new Set(checklist.requiredReferenceRoles.map((role) => role.roleId));
+    orchestrator.commitProject((current) => ({
+      ...current,
+      checklist,
+      references: current.references.map((reference) => ({
+        ...reference,
+        roleIds: reference.roleIds.filter((roleId) => availableRoleIds.has(roleId))
+      })),
+      updatedAt: new Date().toISOString()
+    }));
+  };
+
+  const updateDefaultRepairPolicy = (defaultRepairPolicy: RepairPolicy): void => {
+    orchestrator.commitProject((current) => ({
+      ...current,
+      defaultRepairPolicy,
+      updatedAt: new Date().toISOString()
+    }));
+  };
+
   const selectTarget = (): void => {
     if (!summaryRef.current) return;
     void orchestrator.runSessionOperation(async () => {
@@ -124,12 +155,26 @@ export const App = () => {
     });
   };
 
+  const selectReferences = (): void => {
+    if (!summaryRef.current) return;
+    void orchestrator
+      .runSessionOperation(() => window.checklistMaker.selectReferences())
+      .then((documents) => {
+        if (documents.length === 0) return;
+        orchestrator.commitProject((current) => appendSelectedReferences(current, documents));
+        setActiveSection('references');
+        setNotice(`${documents.length}件の参考資料を登録しました。用途、権威レベル、優先順位を確認してください。`);
+      }, () => undefined);
+  };
+
   const validate = (): void => {
     if (!summaryRef.current) return;
     void orchestrator.runSessionOperation(async () => {
       const nextIssues = await window.checklistMaker.validateProject();
       setIssues(nextIssues);
-      setNotice(nextIssues.length === 0 ? '事前検査に合格しました。' : `事前検査で${nextIssues.length}件の指摘があります。`);
+      setNotice(nextIssues.length === 0
+        ? '事前検査に合格しました。'
+        : `事前検査で${nextIssues.length}件の指摘があります。`);
     });
   };
 
@@ -192,78 +237,24 @@ export const App = () => {
       </section>
 
       {project ? (
-        <section className="workspace" aria-label="プロジェクト概要">
-          <div className="panel primary-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">PROJECT</p>
-                <h2>{modeLabel(project.mode)}</h2>
-              </div>
-              <span className={summary?.dirty ? 'status warning' : 'status ok'}>
-                {summary?.dirty ? '未保存' : '保存済み'}
-              </span>
-            </div>
-
-            <label className="field">
-              <span>プロジェクト名</span>
-              <input
-                value={project.name}
-                onChange={(event) => updateProjectName(event.target.value)}
-                disabled={busy}
-              />
-            </label>
-
-            <dl className="project-stats">
-              <div><dt>チェック項目</dt><dd>{project.checklist.items.length}</dd></div>
-              <div><dt>参考資料</dt><dd>{project.references.length}</dd></div>
-              <div><dt>既定修正方針</dt><dd>{project.defaultRepairPolicy}</dd></div>
-            </dl>
-
-            {project.mode === 'existing_document' ? (
-              <div className="document-card">
-                <div>
-                  <strong>主対象文書</strong>
-                  <p>{project.target?.originalFileName ?? '未選択'}</p>
-                </div>
-                <button type="button" className="secondary" onClick={selectTarget} disabled={busy}>文書を選択</button>
-              </div>
-            ) : project.generation ? (
-              <GenerationSettingsForm generation={project.generation} disabled={busy} onChange={updateGeneration} />
-            ) : (
-              <p className="empty-state">文書生成設定がありません。プロジェクトを作り直してください。</p>
-            )}
-
-            <div className="actions">
-              <button type="button" onClick={() => save(false)} disabled={busy}>保存</button>
-              <button type="button" className="secondary" onClick={() => save(true)} disabled={busy}>名前を付けて保存</button>
-              <button type="button" className="secondary" onClick={validate} disabled={busy}>事前検査</button>
-              <button type="button" onClick={exportPackage} disabled={busy}>Copilot用ZIPを作成</button>
-            </div>
-          </div>
-
-          <aside className="panel validation-panel" aria-label="事前検査結果">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">PREFLIGHT</p>
-                <h2>事前検査</h2>
-              </div>
-              <span className="issue-count">エラー {errorCount} / 警告 {warningCount}</span>
-            </div>
-            {issues.length === 0 ? (
-              <p className="empty-state">「事前検査」を実行すると、パッケージ生成前の問題をここに表示します。</p>
-            ) : (
-              <ul className="issue-list">
-                {issues.map((issue, index) => (
-                  <li key={`${issue.code}-${index}`} className={issue.severity}>
-                    <strong>{issue.message}</strong>
-                    <span>{issue.remediation}</span>
-                    <code>{issue.code}</code>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </aside>
-        </section>
+        <ProjectWorkspace
+          project={project}
+          dirty={summary?.dirty ?? true}
+          activeSection={activeSection}
+          issues={issues}
+          busy={busy}
+          onSectionChange={setActiveSection}
+          onProjectNameChange={updateProjectName}
+          onTargetSelect={selectTarget}
+          onGenerationChange={updateGeneration}
+          onReferencesSelect={selectReferences}
+          onReferencesChange={updateReferences}
+          onChecklistChange={updateChecklist}
+          onDefaultRepairPolicyChange={updateDefaultRepairPolicy}
+          onSave={save}
+          onValidate={validate}
+          onExport={exportPackage}
+        />
       ) : (
         <section className="empty-workspace">
           <h2>ローカルで準備し、Copilotへ手動で渡す</h2>
