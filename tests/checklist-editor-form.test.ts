@@ -25,7 +25,13 @@ describe('ChecklistEditor', () => {
     const conditions = types.map((type, index) => createCondition(type, `COND-${String(index + 1).padStart(2, '0')}`));
     const checklist = {
       ...project.checklist,
-      items: [{ ...project.checklist.items[0]!, conditions }]
+      items: [{ ...project.checklist.items[0]!, conditions }],
+      requiredReferenceRoles: [{
+        roleId: 'ROLE-001',
+        name: '品質基準',
+        required: true,
+        recommendedAuthorityLevel: 'approved' as const
+      }]
     };
 
     const html = renderToStaticMarkup(createElement(ChecklistEditor, {
@@ -39,6 +45,9 @@ describe('ChecklistEditor', () => {
 
     expect(html).toContain('name="checklist-name"');
     expect(html).toContain('name="item-title-CHK-0001"');
+    expect(html).toContain('ロールを追加');
+    expect(html).toContain('name="reference-role-name-ROLE-001"');
+    expect(html).toContain('name="reference-role-required-ROLE-001"');
     expect(html).toContain('name="condition-type-COND-01"');
     expect(html).toContain('name="condition-semantic-instruction-COND-01"');
     expect(html).toContain('name="condition-required-values-COND-02"');
