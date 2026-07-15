@@ -5,7 +5,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import samples.validate_samples as validator
 from samples.validate_samples import (
     ValidationIssue,
     _report,
@@ -324,8 +326,8 @@ class ValidatorCoreTests(unittest.TestCase):
         self.assertEqual(expected_issues, report.issues)
 
         root = self.make_repo(catalog=[
-            self.catalog_entry("samples/NUL/file.json", "sample-b"),
-            self.catalog_entry("../outside.json", "sample-a"),
+            self.catalog_entry("samples/NUL/file.json", "sample-a"),
+            self.catalog_entry("../outside.json", "sample-b"),
         ])
 
         stdout = io.StringIO()
@@ -360,6 +362,799 @@ class ValidatorCoreTests(unittest.TestCase):
             "status": "active",
             "title": "サンプル",
         }
+
+
+class ValidatorContractAndMutationTests(unittest.TestCase):
+    """Exercise the complete format 1.0 contract in temporary repositories."""
+
+    def make_repo(self):
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        sample_directory = root / "samples" / "sample-a"
+        sample_directory.mkdir(parents=True)
+
+        expected_outcomes = b"[]\n"
+        target_document = b"demo target document\n"
+        (sample_directory / "expected-outcomes.json").write_bytes(
+            expected_outcomes)
+        (sample_directory / "target.txt").write_bytes(target_document)
+        manifest = {
+            "demoOperations": [],
+            "description": "説明",
+            "entryPoints": {
+                "existing_document": {
+                    "expectedOutcomesPath": "expected-outcomes.json",
+                    "referenceIds": [],
+                    "targetPath": "target.txt",
+                }
+            },
+            "expectedJudgments": [],
+            "files": [
+                self.file_entry(
+                    "expected-outcomes.json",
+                    "expected_outcomes",
+                    "application/json",
+                    expected_outcomes,
+                ),
+                self.file_entry(
+                    "target.txt",
+                    "target_document",
+                    "text/plain",
+                    target_document,
+                ),
+            ],
+            "id": "sample-a",
+            "language": "ja",
+            "references": [],
+            "sampleFormatVersion": "1.0",
+            "title": "サンプル",
+        }
+        self.write_json(sample_directory / "sample-manifest.json", manifest)
+        self.write_json(root / "samples" / "catalog.json", [{
+            "description": "説明",
+            "id": "sample-a",
+            "manifestPath": "samples/sample-a/sample-manifest.json",
+            "modes": ["existing_document"],
+            "status": "active",
+            "title": "サンプル",
+        }])
+        return root
+
+    @staticmethod
+    def file_entry(path, purpose, media_type, payload):
+        return {
+            "mediaType": media_type,
+            "path": path,
+            "purpose": purpose,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "sizeBytes": len(payload),
+        }
+
+    @staticmethod
+    def write_json(path, value):
+        ValidatorContractAndMutationTests.write_text(
+            path,
+            json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+            + "\n",
+        )
+
+    @staticmethod
+    def write_text(path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(value)
+
+    @staticmethod
+    def read_json(path):
+        with path.open("r", encoding="utf-8") as stream:
+            return json.load(stream)
+
+    def catalog_path(self, root):
+        return root / "samples" / "catalog.json"
+
+    def manifest_path(self, root):
+        return root / "samples" / "sample-a" / "sample-manifest.json"
+
+    def sample_directory(self, root):
+        return self.manifest_path(root).parent
+
+    def mutate_catalog(self, root, mutation):
+        catalog = self.read_json(self.catalog_path(root))
+        mutation(catalog)
+        self.write_json(self.catalog_path(root), catalog)
+
+    def mutate_manifest(self, root, mutation):
+        manifest = self.read_json(self.manifest_path(root))
+        mutation(manifest)
+        self.write_json(self.manifest_path(root), manifest)
+
+    def add_payload(self, root, path, purpose, media_type, payload):
+        payload_path = self.sample_directory(root) / path
+        payload_path.parent.mkdir(parents=True, exist_ok=True)
+        payload_path.write_bytes(payload)
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["files"].append(
+                self.file_entry(path, purpose, media_type, payload)),
+        )
+
+    def add_reference(self, root, reference_id="REF-001"):
+        payload = b"reference text\n"
+        self.add_payload(
+            root,
+            "reference.txt",
+            "reference_document",
+            "text/plain",
+            payload,
+        )
+
+        def mutation(manifest):
+            manifest["references"].append({
+                "authorityLevel": "binding",
+                "displayName": "参考資料",
+                "filePath": "reference.txt",
+                "id": reference_id,
+                "priority": 100,
+                "role": "quality policy",
+            })
+            manifest["entryPoints"]["existing_document"][
+                "referenceIds"].append(reference_id)
+
+        self.mutate_manifest(root, mutation)
+
+    def add_generation_mode(self, root):
+        payload = b'{"request":"generate"}\n'
+        self.add_payload(
+            root,
+            "request.json",
+            "generation_request",
+            "application/json",
+            payload,
+        )
+        self.mutate_catalog(
+            root,
+            lambda catalog: catalog[0]["modes"].append(
+                "document_generation"),
+        )
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"].update({
+                "document_generation": {
+                    "referenceIds": [],
+                    "requestPath": "request.json",
+                }
+            }),
+        )
+
+    def assert_issue(self, root, expected_code):
+        report = validate_catalog(root)
+        self.assertEqual(1, report.exit_code)
+        self.assertIn(expected_code, [issue.code for issue in report.issues])
+        return report
+
+    def test_valid_format_1_catalog_and_manifest_pass(self):
+        root = self.make_repo()
+
+        report = validate_catalog(root)
+
+        self.assertEqual(0, report.exit_code)
+        self.assertEqual(1, report.sample_count)
+        self.assertEqual(2, report.file_count)
+        self.assertEqual((), report.issues)
+
+    def test_both_entry_point_shapes_and_references_pass(self):
+        root = self.make_repo()
+        self.add_reference(root)
+        self.add_generation_mode(root)
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"][
+                "document_generation"]["referenceIds"].append("REF-001"),
+        )
+
+        report = validate_catalog(root)
+
+        self.assertEqual(0, report.exit_code)
+        self.assertEqual(4, report.file_count)
+        self.assertEqual((), report.issues)
+
+    def test_schema_matches_public_validator_constants(self):
+        expected_catalog_keys = frozenset({
+            "id", "manifestPath", "title",
+            "description", "modes", "status",
+        })
+        expected_manifest_keys = frozenset({
+            "sampleFormatVersion", "id", "title", "description", "language",
+            "entryPoints", "files", "references",
+            "expectedJudgments", "demoOperations",
+        })
+        expected_modes = frozenset({
+            "existing_document", "document_generation",
+        })
+        expected_purposes = frozenset({
+            "documentation", "target_document", "expected_outcomes",
+            "generation_request", "reference_document",
+        })
+        expected_media = {
+            ".md": "text/markdown",
+            ".txt": "text/plain",
+            ".json": "application/json",
+            ".pdf": "application/pdf",
+            ".docx": (
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+        }
+        expected_authority_levels = frozenset({
+            "reference", "working", "approved", "binding",
+        })
+        schema_path = Path(validator.__file__).with_name("catalog.schema.json")
+        schema = self.read_json(schema_path)
+        entry_schema = schema["items"]
+        properties = entry_schema["properties"]
+
+        self.assertEqual(expected_catalog_keys, validator.CATALOG_KEYS)
+        self.assertEqual(expected_manifest_keys, validator.MANIFEST_KEYS)
+        self.assertEqual(expected_modes, validator.MODES)
+        self.assertEqual(expected_purposes, validator.PURPOSES)
+        self.assertEqual(expected_media, validator.MEDIA_BY_SUFFIX)
+        self.assertEqual(
+            expected_authority_levels, validator.AUTHORITY_LEVELS)
+        self.assertEqual(
+            "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            validator.CATALOG_ID_PATTERN,
+        )
+        self.assertEqual("active", validator.CATALOG_STATUS)
+        self.assertEqual("array", schema["type"])
+        self.assertFalse(entry_schema["additionalProperties"])
+        self.assertEqual(expected_catalog_keys, frozenset(entry_schema["required"]))
+        self.assertEqual(expected_catalog_keys, frozenset(properties))
+        self.assertEqual(
+            validator.CATALOG_ID_PATTERN,
+            properties["id"]["pattern"],
+        )
+        self.assertEqual(
+            expected_modes,
+            frozenset(properties["modes"]["items"]["enum"]),
+        )
+        self.assertEqual(1, properties["modes"]["minItems"])
+        self.assertTrue(properties["modes"]["uniqueItems"])
+        self.assertEqual(
+            validator.CATALOG_STATUS, properties["status"]["const"])
+
+    def test_catalog_requires_exact_properties(self):
+        root = self.make_repo()
+        self.mutate_catalog(root, lambda catalog: catalog[0].pop("title"))
+        self.assert_issue(root, "PROPERTY_MISSING")
+
+        root = self.make_repo()
+        self.mutate_catalog(
+            root, lambda catalog: catalog[0].update({"extra": True}))
+        self.assert_issue(root, "PROPERTY_UNKNOWN")
+
+    def test_manifest_and_nested_objects_require_exact_properties(self):
+        mutations = (
+            (
+                "manifest missing",
+                lambda manifest: manifest.pop("language"),
+                "PROPERTY_MISSING",
+            ),
+            (
+                "manifest unknown",
+                lambda manifest: manifest.update({"extra": True}),
+                "PROPERTY_UNKNOWN",
+            ),
+            (
+                "entry point missing",
+                lambda manifest: manifest["entryPoints"][
+                    "existing_document"].pop("targetPath"),
+                "PROPERTY_MISSING",
+            ),
+            (
+                "entry point unknown",
+                lambda manifest: manifest["entryPoints"][
+                    "existing_document"].update({"extra": True}),
+                "PROPERTY_UNKNOWN",
+            ),
+            (
+                "file missing",
+                lambda manifest: manifest["files"][0].pop("sha256"),
+                "PROPERTY_MISSING",
+            ),
+            (
+                "file unknown",
+                lambda manifest: manifest["files"][0].update({"extra": True}),
+                "PROPERTY_UNKNOWN",
+            ),
+        )
+        for label, mutation, expected_code in mutations:
+            with self.subTest(label=label):
+                root = self.make_repo()
+                self.mutate_manifest(root, mutation)
+                self.assert_issue(root, expected_code)
+
+        for label, mutation, expected_code in (
+            (
+                "reference missing",
+                lambda manifest: manifest["references"][0].pop("role"),
+                "PROPERTY_MISSING",
+            ),
+            (
+                "reference unknown",
+                lambda manifest: manifest["references"][0].update(
+                    {"extra": True}),
+                "PROPERTY_UNKNOWN",
+            ),
+        ):
+            with self.subTest(label=label):
+                root = self.make_repo()
+                self.add_reference(root)
+                self.mutate_manifest(root, mutation)
+                self.assert_issue(root, expected_code)
+
+    def test_catalog_rejects_wrong_json_types(self):
+        cases = (
+            ("id", 1, "VALUE_INVALID"),
+            ("manifestPath", [], "PATH_INVALID"),
+            ("title", False, "VALUE_INVALID"),
+            ("description", {}, "VALUE_INVALID"),
+            ("modes", "existing_document", "VALUE_INVALID"),
+            ("status", None, "VALUE_INVALID"),
+        )
+        for field, value, expected_code in cases:
+            with self.subTest(field=field):
+                root = self.make_repo()
+                self.mutate_catalog(
+                    root,
+                    lambda catalog, field=field, value=value: catalog[0].update(
+                        {field: value}),
+                )
+                self.assert_issue(root, expected_code)
+
+    def test_manifest_rejects_wrong_json_types(self):
+        cases = (
+            ("sampleFormatVersion", 1, "VALUE_INVALID"),
+            ("id", False, "VALUE_INVALID"),
+            ("title", [], "VALUE_INVALID"),
+            ("description", {}, "VALUE_INVALID"),
+            ("language", None, "VALUE_INVALID"),
+            ("entryPoints", [], "VALUE_INVALID"),
+            ("files", {}, "VALUE_INVALID"),
+            ("references", {}, "VALUE_INVALID"),
+            ("expectedJudgments", {}, "VALUE_INVALID"),
+            ("demoOperations", {}, "VALUE_INVALID"),
+        )
+        for field, value, expected_code in cases:
+            with self.subTest(field=field):
+                root = self.make_repo()
+                self.mutate_manifest(
+                    root,
+                    lambda manifest, field=field, value=value: manifest.update(
+                        {field: value}),
+                )
+                self.assert_issue(root, expected_code)
+
+    def test_nested_objects_reject_wrong_json_types(self):
+        file_cases = (
+            ("path", 1, "PATH_INVALID"),
+            ("purpose", [], "VALUE_INVALID"),
+            ("mediaType", {}, "VALUE_INVALID"),
+            ("sha256", False, "VALUE_INVALID"),
+            ("sizeBytes", "1", "VALUE_INVALID"),
+        )
+        for field, value, expected_code in file_cases:
+            with self.subTest(kind="file", field=field):
+                root = self.make_repo()
+                self.mutate_manifest(
+                    root,
+                    lambda manifest, field=field, value=value: manifest[
+                        "files"][0].update({field: value}),
+                )
+                self.assert_issue(root, expected_code)
+
+        reference_cases = (
+            ("id", 1, "REFERENCE_ID_INVALID"),
+            ("filePath", [], "PATH_INVALID"),
+            ("displayName", False, "VALUE_INVALID"),
+            ("role", {}, "VALUE_INVALID"),
+            ("authorityLevel", None, "VALUE_INVALID"),
+            ("priority", True, "VALUE_INVALID"),
+        )
+        for field, value, expected_code in reference_cases:
+            with self.subTest(kind="reference", field=field):
+                root = self.make_repo()
+                self.add_reference(root)
+                self.mutate_manifest(
+                    root,
+                    lambda manifest, field=field, value=value: manifest[
+                        "references"][0].update({field: value}),
+                )
+                self.assert_issue(root, expected_code)
+
+        entry_cases = (
+            ("targetPath", 1, "PATH_INVALID"),
+            ("expectedOutcomesPath", [], "PATH_INVALID"),
+            ("referenceIds", "REF-001", "VALUE_INVALID"),
+        )
+        for field, value, expected_code in entry_cases:
+            with self.subTest(kind="entry point", field=field):
+                root = self.make_repo()
+                self.mutate_manifest(
+                    root,
+                    lambda manifest, field=field, value=value: manifest[
+                        "entryPoints"]["existing_document"].update(
+                            {field: value}),
+                )
+                self.assert_issue(root, expected_code)
+
+    def test_catalog_ids_are_sorted_unique_and_valid(self):
+        cases = (
+            ("unsorted", "sample-0", "VALUE_INVALID"),
+            ("duplicate", "sample-a", "VALUE_INVALID"),
+            ("case-insensitive duplicate", "SAMPLE-A", "VALUE_INVALID"),
+            ("invalid pattern", "sample_a", "VALUE_INVALID"),
+        )
+        for label, second_id, expected_code in cases:
+            with self.subTest(label=label):
+                root = self.make_repo()
+
+                def mutation(catalog):
+                    second = dict(catalog[0])
+                    second["id"] = second_id
+                    catalog.append(second)
+
+                self.mutate_catalog(root, mutation)
+                self.assert_issue(root, expected_code)
+
+    def test_manifest_paths_are_case_insensitively_unique(self):
+        root = self.make_repo()
+
+        def mutation(catalog):
+            second = dict(catalog[0])
+            second["id"] = "sample-b"
+            second["manifestPath"] = (
+                "SAMPLES/SAMPLE-A/SAMPLE-MANIFEST.JSON")
+            catalog.append(second)
+
+        self.mutate_catalog(root, mutation)
+        self.assert_issue(root, "PATH_CASE_COLLISION")
+
+    def test_catalog_and_manifest_metadata_must_match(self):
+        cases = (
+            ("id", "different-id"),
+            ("title", "別のタイトル"),
+            ("description", "別の説明"),
+        )
+        for field, value in cases:
+            with self.subTest(field=field):
+                root = self.make_repo()
+                self.mutate_manifest(
+                    root,
+                    lambda manifest, field=field, value=value: manifest.update(
+                        {field: value}),
+                )
+                self.assert_issue(root, "VALUE_INVALID")
+
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"].update({
+                "document_generation": {
+                    "requestPath": "expected-outcomes.json",
+                    "referenceIds": [],
+                }
+            }),
+        )
+        report = self.assert_issue(root, "PROPERTY_UNKNOWN")
+        self.assertIn(
+            "VALUE_INVALID", [issue.code for issue in report.issues])
+
+    def test_manifest_version_language_modes_and_catalog_values_are_exact(self):
+        manifest_cases = (
+            ("sampleFormatVersion", "2.0"),
+            ("language", "en"),
+        )
+        for field, value in manifest_cases:
+            with self.subTest(field=field):
+                root = self.make_repo()
+                self.mutate_manifest(
+                    root,
+                    lambda manifest, field=field, value=value: manifest.update(
+                        {field: value}),
+                )
+                self.assert_issue(root, "VALUE_INVALID")
+
+        catalog_cases = (
+            ("empty modes", "modes", []),
+            (
+                "duplicate modes",
+                "modes",
+                ["existing_document", "existing_document"],
+            ),
+            ("unknown mode", "modes", ["review"]),
+            ("inactive", "status", "inactive"),
+            ("empty title", "title", ""),
+            ("empty description", "description", ""),
+        )
+        for label, field, value in catalog_cases:
+            with self.subTest(label=label):
+                root = self.make_repo()
+                self.mutate_catalog(
+                    root,
+                    lambda catalog, field=field, value=value: catalog[0].update(
+                        {field: value}),
+                )
+                self.assert_issue(root, "VALUE_INVALID")
+
+    def test_file_inventory_detects_missing_unlisted_and_non_regular_files(self):
+        root = self.make_repo()
+        (self.sample_directory(root) / "target.txt").unlink()
+        self.assert_issue(root, "FILE_NOT_FOUND")
+
+        root = self.make_repo()
+        (self.sample_directory(root) / "unlisted.txt").write_text(
+            "unlisted\n", encoding="utf-8")
+        self.assert_issue(root, "FILE_UNLISTED")
+
+        root = self.make_repo()
+        target = self.sample_directory(root) / "target.txt"
+        target.unlink()
+        target.mkdir()
+        self.assert_issue(root, "FILE_NOT_FOUND")
+
+    def test_file_inventory_detects_duplicates_and_case_collisions(self):
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["files"].append(
+                dict(manifest["files"][0])),
+        )
+        self.assert_issue(root, "VALUE_INVALID")
+
+        root = self.make_repo()
+        self.add_payload(
+            root, "Case.txt", "documentation", "text/plain", b"upper\n")
+        self.add_payload(
+            root, "case.txt", "documentation", "text/plain", b"lower\n")
+        self.assert_issue(root, "PATH_CASE_COLLISION")
+
+    def test_file_size_and_sha256_are_verified(self):
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["files"][0].update({
+                "sizeBytes": manifest["files"][0]["sizeBytes"] + 1
+            }),
+        )
+        self.assert_issue(root, "FILE_SIZE_MISMATCH")
+
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["files"][0].update(
+                {"sha256": "0" * 64}),
+        )
+        self.assert_issue(root, "FILE_SHA256_MISMATCH")
+
+    def test_media_type_must_match_a_supported_lowercase_extension(self):
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["files"][1].update(
+                {"mediaType": "application/json"}),
+        )
+        self.assert_issue(root, "MEDIA_EXTENSION_MISMATCH")
+
+        root = self.make_repo()
+        self.add_payload(
+            root,
+            "unsupported.bin",
+            "documentation",
+            "application/octet-stream",
+            b"binary\n",
+        )
+        self.assert_issue(root, "MEDIA_EXTENSION_MISMATCH")
+
+    def test_references_require_valid_unique_ids_and_paths(self):
+        root = self.make_repo()
+        self.add_reference(root, "REF-01")
+        self.assert_issue(root, "REFERENCE_ID_INVALID")
+
+        root = self.make_repo()
+        self.add_reference(root)
+
+        def duplicate_id(manifest):
+            duplicate = dict(manifest["references"][0])
+            duplicate["filePath"] = "target.txt"
+            manifest["references"].append(duplicate)
+
+        self.mutate_manifest(root, duplicate_id)
+        self.assert_issue(root, "REFERENCE_ID_DUPLICATE")
+
+        root = self.make_repo()
+        self.add_reference(root)
+
+        def duplicate_path(manifest):
+            duplicate = dict(manifest["references"][0])
+            duplicate["id"] = "REF-002"
+            manifest["references"].append(duplicate)
+
+        self.mutate_manifest(root, duplicate_path)
+        self.assert_issue(root, "VALUE_INVALID")
+
+    def test_reference_paths_must_name_listed_reference_documents(self):
+        root = self.make_repo()
+        self.add_reference(root)
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["references"][0].update(
+                {"filePath": "missing.txt"}),
+        )
+        self.assert_issue(root, "REFERENCE_FILE_UNKNOWN")
+
+        root = self.make_repo()
+        self.add_reference(root)
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["references"][0].update(
+                {"filePath": "target.txt"}),
+        )
+        self.assert_issue(root, "REFERENCE_FILE_UNKNOWN")
+
+    def test_entry_point_reference_ids_are_unique_and_known(self):
+        root = self.make_repo()
+        self.add_reference(root)
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"][
+                "existing_document"]["referenceIds"].append("REF-001"),
+        )
+        self.assert_issue(root, "REFERENCE_ID_DUPLICATE")
+
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"][
+                "existing_document"]["referenceIds"].append("REF-999"),
+        )
+        self.assert_issue(root, "ENTRY_POINT_REFERENCE_UNKNOWN")
+
+    def test_entry_point_files_must_be_listed_with_the_required_purpose(self):
+        cases = (
+            ("targetPath", "missing.txt"),
+            ("targetPath", "expected-outcomes.json"),
+            ("expectedOutcomesPath", "target.txt"),
+        )
+        for field, value in cases:
+            with self.subTest(mode="existing_document", field=field):
+                root = self.make_repo()
+                self.mutate_manifest(
+                    root,
+                    lambda manifest, field=field, value=value: manifest[
+                        "entryPoints"]["existing_document"].update(
+                            {field: value}),
+                )
+                self.assert_issue(root, "ENTRY_POINT_FILE_UNKNOWN")
+
+        root = self.make_repo()
+        self.add_generation_mode(root)
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"][
+                "document_generation"].update({"requestPath": "target.txt"}),
+        )
+        self.assert_issue(root, "ENTRY_POINT_FILE_UNKNOWN")
+
+    def test_text_payloads_must_be_valid_utf8(self):
+        for suffix, media_type in (
+            (".md", "text/markdown"),
+            (".txt", "text/plain"),
+        ):
+            with self.subTest(suffix=suffix):
+                root = self.make_repo()
+                self.add_payload(
+                    root,
+                    "invalid" + suffix,
+                    "documentation",
+                    media_type,
+                    b"\xff\xfe",
+                )
+                self.assert_issue(root, "JSON_INVALID")
+
+    def test_json_payloads_reject_duplicate_object_keys(self):
+        root = self.make_repo()
+        self.add_payload(
+            root,
+            "duplicate.json",
+            "documentation",
+            "application/json",
+            b'{"value":1,"value":2}\n',
+        )
+        self.assert_issue(root, "JSON_DUPLICATE_KEY")
+
+    def test_issue_order_is_deterministic_and_paths_are_sanitized(self):
+        root = self.make_repo()
+
+        def mutation(manifest):
+            manifest["files"][1]["sha256"] = "f" * 64
+            manifest["files"][0]["sizeBytes"] += 1
+            manifest["entryPoints"]["existing_document"][
+                "targetPath"] = str(root / "secret.txt")
+
+        self.mutate_manifest(root, mutation)
+        first = validate_catalog(root)
+        second = validate_catalog(root)
+        first_keys = [
+            (issue.location, issue.code, issue.message)
+            for issue in first.issues
+        ]
+
+        self.assertEqual(first.issues, second.issues)
+        self.assertEqual(sorted(first_keys), first_keys)
+        rendered = "\n".join(
+            f"{issue.code} {issue.location}: {issue.message}"
+            for issue in first.issues
+        )
+        self.assertNotIn(str(root), rendered)
+
+    def test_cli_returns_zero_one_and_two_with_stable_codes(self):
+        root = self.make_repo()
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = main(("--root", str(root)))
+        self.assertEqual(0, exit_code)
+        self.assertEqual("OK samples=1 files=2\n", stdout.getvalue())
+        self.assertEqual("", stderr.getvalue())
+
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["files"][0].update(
+                {"sha256": "0" * 64}),
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = main(("--root", str(root)))
+        self.assertEqual(1, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("ERROR FILE_SHA256_MISMATCH ", stderr.getvalue())
+        self.assertNotIn(str(root), stderr.getvalue())
+
+        missing_root = root / "missing"
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = main(("--root", str(missing_root)))
+        self.assertEqual(2, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("ERROR INPUT_READ_FAILED ", stderr.getvalue())
+        self.assertNotIn(str(root), stderr.getvalue())
+
+    def test_cli_usage_and_internal_failures_return_two_without_tracebacks(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            exit_code = main(("--not-an-option",))
+        self.assertEqual(2, exit_code)
+        self.assertEqual(
+            "ERROR CLI_USAGE cli: invalid command-line arguments\n",
+            stderr.getvalue(),
+        )
+
+        stderr = io.StringIO()
+        with mock.patch.object(
+                validator, "validate_catalog", side_effect=RuntimeError("secret")):
+            with contextlib.redirect_stderr(stderr):
+                exit_code = main(())
+        self.assertEqual(2, exit_code)
+        self.assertEqual(
+            "ERROR INTERNAL_ERROR samples/catalog.json: "
+            "unexpected validator failure\n",
+            stderr.getvalue(),
+        )
+        self.assertNotIn("secret", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
 
 
 if __name__ == "__main__":

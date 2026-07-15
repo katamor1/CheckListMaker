@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "id": {
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "type": "string"
+      },
+      "manifestPath": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "modes": {
+        "items": {
+          "enum": [
+            "document_generation",
+            "existing_document"
+          ]
+        },
+        "minItems": 1,
+        "type": "array",
+        "uniqueItems": true
+      },
+      "status": {
+        "const": "active"
+      },
+      "title": {
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "description",
+      "id",
+      "manifestPath",
+      "modes",
+      "status",
+      "title"
+    ],
+    "type": "object"
+  },
+  "title": "CheckListMaker sample catalog",
+  "type": "array"
+}
