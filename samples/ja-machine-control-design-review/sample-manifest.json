@@ -1,0 +1,132 @@
+{
+  "sampleFormatVersion": "1.0",
+  "id": "ja-machine-control-design-review",
+  "title": "設備状態監視機能 基本設計レビュー",
+  "description": "既存文書レビューと文書生成を確認する日本語デモ",
+  "language": "ja",
+  "entryPoints": {
+    "existing_document": {
+      "targetPath": "existing-document/target/basic-design-before-review.docx",
+      "expectedOutcomesPath": "existing-document/expected-outcomes.json",
+      "referenceIds": [
+        "REF-001",
+        "REF-002",
+        "REF-003",
+        "REF-004"
+      ]
+    },
+    "document_generation": {
+      "requestPath": "generation/document-request.json",
+      "referenceIds": [
+        "REF-001",
+        "REF-002",
+        "REF-003",
+        "REF-004"
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "existing-document/expected-outcomes.json",
+      "purpose": "expected_outcomes",
+      "mediaType": "application/json",
+      "sha256": "98b0a934304d23491d8724de7b7781ae67f82c41193bbfa3853c141f7efc07d4",
+      "sizeBytes": 3959
+    },
+    {
+      "path": "existing-document/target/basic-design-before-review.docx",
+      "purpose": "target_document",
+      "mediaType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "sha256": "9e98b7d5485f321c94e18ed0c4da9367eb650da9a768de0cf68622fbf86107bc",
+      "sizeBytes": 37366
+    },
+    {
+      "path": "generation/document-request.json",
+      "purpose": "generation_request",
+      "mediaType": "application/json",
+      "sha256": "19e28253b07185be668e7caf2ec146a2e352075d8077da119100a03278bdda9c",
+      "sizeBytes": 640
+    },
+    {
+      "path": "README.md",
+      "purpose": "documentation",
+      "mediaType": "text/markdown",
+      "sha256": "d711162c49a0532c0728cd85c87cb6d9d012de5c17661617b3828ee01e71ab11",
+      "sizeBytes": 2046
+    },
+    {
+      "path": "references/basic-design-template.md",
+      "purpose": "reference_document",
+      "mediaType": "text/markdown",
+      "sha256": "ec977d63a4ac916171563e60ac7e316b49994bfd7599214f6c820bb0f711895a",
+      "sizeBytes": 1377
+    },
+    {
+      "path": "references/control-terminology.txt",
+      "purpose": "reference_document",
+      "mediaType": "text/plain",
+      "sha256": "d90983e882e103b093aae4b2609b91e8026f2ce917af9aaf711010e5c5a4d913",
+      "sizeBytes": 436
+    },
+    {
+      "path": "references/quality-assurance-policy.pdf",
+      "purpose": "reference_document",
+      "mediaType": "application/pdf",
+      "sha256": "7a307f0e7461891d92f21522c22bcef6f42b8e4a2bf4737d036eb0c8bb0d9f4a",
+      "sizeBytes": 4423
+    },
+    {
+      "path": "references/reference-design.docx",
+      "purpose": "reference_document",
+      "mediaType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "sha256": "50d6ab7caef850a62227943c3a1ea9567f459ebd6b0f556efd6e128a19b71544",
+      "sizeBytes": 36699
+    }
+  ],
+  "references": [
+    {
+      "id": "REF-001",
+      "filePath": "references/quality-assurance-policy.pdf",
+      "displayName": "品質保証規程（デモ）",
+      "role": "必須品質規則と禁止事項",
+      "authorityLevel": "binding",
+      "priority": 100
+    },
+    {
+      "id": "REF-002",
+      "filePath": "references/basic-design-template.md",
+      "displayName": "基本設計テンプレート",
+      "role": "必須章、記載項目、順序",
+      "authorityLevel": "approved",
+      "priority": 80
+    },
+    {
+      "id": "REF-003",
+      "filePath": "references/control-terminology.txt",
+      "displayName": "制御用語集",
+      "role": "用語と表記の統一",
+      "authorityLevel": "working",
+      "priority": 60
+    },
+    {
+      "id": "REF-004",
+      "filePath": "references/reference-design.docx",
+      "displayName": "設備状態監視機能 参考設計書",
+      "role": "上位資料と矛盾しない記述例",
+      "authorityLevel": "reference",
+      "priority": 40
+    }
+  ],
+  "expectedJudgments": [
+    "必須項目の不足を invalid と判定する",
+    "任意項目の不足を警告として示す",
+    "根拠情報が不足する場合は needs_information と判定する",
+    "binding の参考資料を reference より優先する"
+  ],
+  "demoOperations": [
+    "既存 DOCX を読み込んでレビューする",
+    "修正方針ごとの提案を比較する",
+    "参考資料を根拠として DOCX を生成する",
+    "参考資料が読み取り専用であることを確認する"
+  ]
+}

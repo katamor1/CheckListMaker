@@ -1270,5 +1270,143 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
         self.assertNotIn("Traceback", stderr.getvalue())
 
 
+class RegisteredSampleCatalogTests(unittest.TestCase):
+    REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+    SCENARIO_ROOT = (
+        REPOSITORY_ROOT / "samples" / "ja-machine-control-design-review"
+    )
+    EXPECTED_CATALOG = [
+        {
+            "id": "ja-machine-control-design-review",
+            "manifestPath": (
+                "samples/ja-machine-control-design-review/"
+                "sample-manifest.json"
+            ),
+            "title": "設備状態監視機能 基本設計レビュー",
+            "description": "既存文書レビューと文書生成を確認する日本語デモ",
+            "modes": ["existing_document", "document_generation"],
+            "status": "active",
+        }
+    ]
+    EXPECTED_PAYLOADS = {
+        "existing-document/expected-outcomes.json": (
+            3959,
+            "98b0a934304d23491d8724de7b7781ae67f82c41193bbfa3853c141f7efc07d4",
+        ),
+        "existing-document/target/basic-design-before-review.docx": (
+            37366,
+            "9e98b7d5485f321c94e18ed0c4da9367eb650da9a768de0cf68622fbf86107bc",
+        ),
+        "generation/document-request.json": (
+            640,
+            "19e28253b07185be668e7caf2ec146a2e352075d8077da119100a03278bdda9c",
+        ),
+        "README.md": (
+            2046,
+            "d711162c49a0532c0728cd85c87cb6d9d012de5c17661617b3828ee01e71ab11",
+        ),
+        "references/basic-design-template.md": (
+            1377,
+            "ec977d63a4ac916171563e60ac7e316b49994bfd7599214f6c820bb0f711895a",
+        ),
+        "references/control-terminology.txt": (
+            436,
+            "d90983e882e103b093aae4b2609b91e8026f2ce917af9aaf711010e5c5a4d913",
+        ),
+        "references/quality-assurance-policy.pdf": (
+            4423,
+            "7a307f0e7461891d92f21522c22bcef6f42b8e4a2bf4737d036eb0c8bb0d9f4a",
+        ),
+        "references/reference-design.docx": (
+            36699,
+            "50d6ab7caef850a62227943c3a1ea9567f459ebd6b0f556efd6e128a19b71544",
+        ),
+    }
+
+    @staticmethod
+    def read_json(path):
+        with path.open("r", encoding="utf-8") as stream:
+            return json.load(stream)
+
+    def test_repository_catalog_is_the_exact_single_active_entry(self):
+        catalog_path = self.REPOSITORY_ROOT / "samples" / "catalog.json"
+
+        catalog = self.read_json(catalog_path)
+
+        self.assertEqual(self.EXPECTED_CATALOG, catalog)
+        self.assertEqual(
+            json.dumps(
+                self.EXPECTED_CATALOG,
+                ensure_ascii=False,
+                indent=2,
+            ).encode("utf-8") + b"\n",
+            catalog_path.read_bytes(),
+        )
+
+    def test_repository_manifest_completely_locks_all_payload_bytes(self):
+        manifest = self.read_json(self.SCENARIO_ROOT / "sample-manifest.json")
+        files = manifest["files"]
+        actual_paths = []
+        for path in self.SCENARIO_ROOT.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            relative_path = path.relative_to(self.SCENARIO_ROOT).as_posix()
+            if relative_path != "sample-manifest.json":
+                actual_paths.append(relative_path)
+
+        expected_paths = list(self.EXPECTED_PAYLOADS)
+        self.assertEqual(expected_paths, sorted(actual_paths, key=str.casefold))
+        self.assertEqual(expected_paths, [entry["path"] for entry in files])
+        for entry in files:
+            relative_path = entry["path"]
+            expected_size, expected_sha256 = self.EXPECTED_PAYLOADS[relative_path]
+            payload = (self.SCENARIO_ROOT / relative_path).read_bytes()
+            with self.subTest(path=relative_path):
+                self.assertEqual(expected_size, len(payload))
+                self.assertEqual(
+                    expected_sha256, hashlib.sha256(payload).hexdigest()
+                )
+                self.assertEqual(expected_size, entry["sizeBytes"])
+                self.assertEqual(expected_sha256, entry["sha256"])
+
+    def test_repository_validator_cli_reports_exact_success_summary(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            with contextlib.redirect_stderr(stderr):
+                exit_code = main(("--root", str(self.REPOSITORY_ROOT)))
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual("OK samples=1 files=8\n", stdout.getvalue())
+        self.assertEqual("", stderr.getvalue())
+
+    def test_validator_detects_mutation_without_rewriting_any_bytes(self):
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        root = Path(temporary_directory.name)
+        shutil.copytree(self.REPOSITORY_ROOT / "samples", root / "samples")
+        sample_root = root / "samples" / "ja-machine-control-design-review"
+        manifest_path = sample_root / "sample-manifest.json"
+        manifest_before = manifest_path.read_bytes()
+        payload_path = sample_root / "README.md"
+        payload_before = payload_path.read_bytes()
+        payload_path.write_bytes(payload_before + b"x")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            with contextlib.redirect_stderr(stderr):
+                exit_code = main(("--root", str(root)))
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual("", stdout.getvalue())
+        self.assertIn("ERROR FILE_SIZE_MISMATCH ", stderr.getvalue())
+        self.assertIn("ERROR FILE_SHA256_MISMATCH ", stderr.getvalue())
+        self.assertNotIn(str(root), stderr.getvalue())
+        self.assertEqual(manifest_before, manifest_path.read_bytes())
+        self.assertEqual(payload_before + b"x", payload_path.read_bytes())
+
+
 if __name__ == "__main__":
     unittest.main()
