@@ -1,0 +1,68 @@
+{
+  "name": "checklistmaker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline checklist authoring and Copilot validation-package generator",
+  "main": "dist/main/main.js",
+  "type": "module",
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run clean && npm run build:main && npm run build:renderer",
+    "test": "vitest run",
+    "verify": "npm run typecheck && npm run test && npm run build",
+    "start": "npm run build && electron .",
+    "dev": "concurrently -k \"vite\" \"tsc -p tsconfig.main.json --watch\" \"wait-on http://127.0.0.1:5173 dist/main/main.js && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "dist:portable": "npm run verify && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable"
+  },
+  "dependencies": {
+    "fflate": "0.8.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "5.0.4",
+    "concurrently": "9.2.1",
+    "cross-env": "10.1.0",
+    "electron": "41.2.1",
+    "electron-builder": "26.0.12",
+    "typescript": "5.9.3",
+    "vite": "7.1.12",
+    "vitest": "3.2.4",
+    "wait-on": "8.0.4"
+  },
+  "build": {
+    "appId": "jp.checklistmaker.desktop",
+    "productName": "CheckListMaker",
+    "asar": true,
+    "directories": {
+      "output": "artifacts/portable"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "CheckListMaker.exe",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "CheckListMaker.exe",
+      "requestExecutionLevel": "user"
+    }
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
