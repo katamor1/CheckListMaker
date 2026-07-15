@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ProjectMode, ProjectSummary, ValidationIssue } from '../shared/model.js';
+import type { DocumentGenerationDefinition, ProjectMode, ProjectSummary, ValidationIssue } from '../shared/model.js';
+import { GenerationSettingsForm } from './GenerationSettingsForm.js';
 
 type Versions = {
   application: string;
@@ -69,6 +70,18 @@ export const App = () => {
             ...current,
             dirty: true,
             project: { ...current.project, name, updatedAt: new Date().toISOString() }
+          }
+        : current
+    );
+  };
+
+  const updateGeneration = (generation: DocumentGenerationDefinition): void => {
+    setSummary((current) =>
+      current?.project.mode === 'document_generation'
+        ? {
+            ...current,
+            dirty: true,
+            project: { ...current.project, generation, updatedAt: new Date().toISOString() }
           }
         : current
     );
@@ -184,14 +197,10 @@ export const App = () => {
                 </div>
                 <button type="button" className="secondary" onClick={selectTarget} disabled={busy}>文書を選択</button>
               </div>
+            ) : project.generation ? (
+              <GenerationSettingsForm generation={project.generation} disabled={busy} onChange={updateGeneration} />
             ) : (
-              <div className="document-card">
-                <div>
-                  <strong>生成文書</strong>
-                  <p>{project.generation?.title ?? '生成設定がありません'}</p>
-                </div>
-                <span className="status neutral">{project.generation?.requestedFormat.toUpperCase()}</span>
-              </div>
+              <p className="empty-state">文書生成設定がありません。プロジェクトを作り直してください。</p>
             )}
 
             <div className="actions">
