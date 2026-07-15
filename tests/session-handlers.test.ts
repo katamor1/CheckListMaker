@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createProject } from '../src/shared/defaults.js';
 import { IPC } from '../src/shared/ipc.js';
-import { UserFacingError } from '../src/shared/ipc-result.js';
+import { runIpcOperation, UserFacingError } from '../src/shared/ipc-result.js';
+import { createBridge } from '../src/preload/preload.js';
 import type {
   ChecklistTemplateDefinition,
   ExportResult,
@@ -225,6 +226,16 @@ describe('createSessionHandlers', () => {
       message: 'テンプレートを保存できませんでした。保存先とアクセス権を確認してください。',
       cause: storeCause
     });
+    const unsafeStoreCause = new UserFacingError(
+      'DEPENDENCY_RAW',
+      'C:\\secret\\template.clmcheck\n    at template:save'
+    );
+    fixture.store.saveTemplate.mockRejectedValue(unsafeStoreCause);
+    await expect(handlers[IPC.saveTemplate](context)).rejects.toMatchObject({
+      code: 'TEMPLATE_SAVE_FAILED',
+      message: 'テンプレートを保存できませんでした。保存先とアクセス権を確認してください。',
+      cause: unsafeStoreCause
+    });
 
     const statCause = new Error('C:\\secret\\package.zip missing');
     vi.mocked(fixture.dependencies.measureOutput).mockRejectedValue(statCause);
@@ -233,7 +244,75 @@ describe('createSessionHandlers', () => {
       message: 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。',
       cause: statCause
     });
+    const unsafeStatCause = new UserFacingError(
+      'DEPENDENCY_RAW',
+      'C:\\secret\\package.zip\n    at package:stat'
+    );
+    vi.mocked(fixture.dependencies.measureOutput).mockRejectedValue(unsafeStatCause);
+    await expect(handlers[IPC.exportPackage](context)).rejects.toMatchObject({
+      code: 'PACKAGE_EXPORT_FAILED',
+      message: 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。',
+      cause: unsafeStatCause
+    });
     expect(fixture.dependencies.allowedOutputPaths).not.toContain('C:\\out\\package.zip');
+  });
+
+  it('replaces an unsafe dependency UserFacingError before IPC and Preload can expose it', async () => {
+    const fixture = createFixture();
+    const unsafeMessage = "C:\\secret\\customer.clmcheck\n    at dependency stack\nproject:save";
+    const dependencyError = new UserFacingError('DEPENDENCY_RAW', unsafeMessage);
+    vi.mocked(fixture.dependencies.selectTarget).mockRejectedValue(dependencyError);
+    const handlers = createSessionHandlers(fixture.dependencies);
+
+    await expect(handlers[IPC.selectTarget](context)).rejects.toMatchObject({
+      code: 'DOCUMENT_REGISTER_FAILED',
+      message: '文書を登録できませんでした。ファイルを確認してください。',
+      cause: dependencyError
+    });
+
+    const envelope = await runIpcOperation(() => handlers[IPC.selectTarget](context));
+    expect(JSON.stringify(envelope)).not.toContain('C:\\\\secret');
+    expect(JSON.stringify(envelope)).not.toContain('dependency stack');
+    expect(JSON.stringify(envelope)).not.toContain('project:save');
+
+    const bridge = createBridge({
+      invoke: vi.fn().mockResolvedValue(envelope),
+      on: vi.fn(),
+      removeListener: vi.fn()
+    });
+    await expect(bridge.selectTarget()).rejects.toThrow(
+      '文書を登録できませんでした。ファイルを確認してください。'
+    );
+    await expect(bridge.selectTarget()).rejects.not.toThrow('project:save');
+  });
+
+  it('replaces an unsafe package dependency UserFacingError at the export boundary', async () => {
+    const fixture = createFixture();
+    const unsafeMessage = "C:\\secret\\package.zip\n    at package dependency stack\npackage:export";
+    const dependencyError = new UserFacingError('DEPENDENCY_RAW', unsafeMessage);
+    fixture.controller.export.mockRejectedValue(dependencyError);
+    const handlers = createSessionHandlers(fixture.dependencies);
+
+    await expect(handlers[IPC.exportPackage](context)).rejects.toMatchObject({
+      code: 'PACKAGE_EXPORT_FAILED',
+      message: 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。',
+      cause: dependencyError
+    });
+
+    const envelope = await runIpcOperation(() => handlers[IPC.exportPackage](context));
+    expect(JSON.stringify(envelope)).not.toContain('C:\\\\secret');
+    expect(JSON.stringify(envelope)).not.toContain('package dependency stack');
+    expect(JSON.stringify(envelope)).not.toContain('package:export');
+
+    const bridge = createBridge({
+      invoke: vi.fn().mockResolvedValue(envelope),
+      on: vi.fn(),
+      removeListener: vi.fn()
+    });
+    await expect(bridge.exportPackage()).rejects.toThrow(
+      'パッケージを作成できませんでした。保存先とアクセス権を確認してください。'
+    );
+    await expect(bridge.exportPackage()).rejects.not.toThrow('package:export');
   });
 
   it('contains each session invoke channel exactly once and excludes direct handlers', () => {

@@ -20,6 +20,10 @@ import {
   coordinateClose
 } from './close-coordinator.js';
 import { DocumentRegistry } from './document-registry.js';
+import {
+  registerElectronIpc,
+  wireWindowCloseGuard
+} from './electron-adapter.js';
 import { ProjectSessionManager } from './project-session.js';
 import { ProjectSessionController, type SessionControllerPorts } from './session-controller.js';
 import {
@@ -41,14 +45,6 @@ const closeCoordinators = new Map<number, CloseCoordinator>();
 const CLOSE_FLUSH_TIMEOUT_MS = 5_000;
 
 const fileFilters = [{ name: '対応文書', extensions: ['md', 'txt', 'docx', 'pdf'] }];
-
-const requireOwner = (event: IpcMainInvokeEvent): BrowserWindow => {
-  const owner = BrowserWindow.fromWebContents(event.sender);
-  if (!owner) {
-    throw new UserFacingError('WINDOW_UNAVAILABLE', GENERIC_USER_MESSAGE);
-  }
-  return owner;
-};
 
 const showSafeError = async (owner: BrowserWindow, message: string): Promise<void> => {
   await dialog.showMessageBox(owner, {
@@ -170,90 +166,73 @@ const createHandlerDependencies = (owner: BrowserWindow): SessionHandlerDependen
   allowedOutputPaths
 });
 
-const handle = <TArgs extends unknown[], TResult>(
-  channel: string,
-  operation: (event: IpcMainInvokeEvent, ...args: TArgs) => Promise<TResult> | TResult
-): void => {
-  ipcMain.handle(channel, (event, ...rawArgs: unknown[]) =>
-    runIpcOperation(
-      () => operation(event, ...(rawArgs as TArgs)),
-      (error) => console.error(error)
-    )
-  );
-};
-
 const registerIpc = (): void => {
-  for (const channel of Object.values(IPC)) ipcMain.removeHandler(channel);
-
-  for (const channel of SESSION_INVOKE_CHANNELS) {
-    handle(channel, (event, ...args: unknown[]) => {
-      const owner = requireOwner(event);
-      const handlers = createSessionHandlers(createHandlerDependencies(owner));
-      return handlers[channel]({ senderId: event.sender.id }, ...args);
-    });
-  }
-
-  handle(IPC.openFolder, async (_event, rawPath: unknown) => {
-    if (typeof rawPath !== 'string') {
-      throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
+  registerElectronIpc({
+    allChannels: Object.values(IPC),
+    sessionChannels: SESSION_INVOKE_CHANNELS,
+    directHandlers: [
+      {
+        channel: IPC.openFolder,
+        operation: async (_event: IpcMainInvokeEvent, rawPath: unknown) => {
+          if (typeof rawPath !== 'string') {
+            throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
+          }
+          if (!allowedOutputPaths.has(rawPath)) {
+            throw new UserFacingError('OUTPUT_NOT_ALLOWED', 'この場所を開く権限がありません。');
+          }
+          shell.showItemInFolder(rawPath);
+        }
+      },
+      {
+        channel: IPC.versions,
+        operation: () => ({
+          application: APPLICATION_VERSION,
+          electron: process.versions.electron,
+          node: process.versions.node,
+          chrome: process.versions.chrome
+        })
+      }
+    ],
+    removeHandler: (channel) => ipcMain.removeHandler(channel),
+    installHandler: (channel, listener) => {
+      ipcMain.handle(channel, listener);
+    },
+    runSafely: (operation) => runIpcOperation(operation, (error) => console.error(error)),
+    resolveOwner: (sender) => BrowserWindow.fromWebContents(sender) ?? undefined,
+    handlersFor: (owner) => createSessionHandlers(createHandlerDependencies(owner)),
+    ownerUnavailable: () => {
+      throw new UserFacingError('WINDOW_UNAVAILABLE', GENERIC_USER_MESSAGE);
     }
-    if (!allowedOutputPaths.has(rawPath)) {
-      throw new UserFacingError('OUTPUT_NOT_ALLOWED', 'この場所を開く権限がありません。');
-    }
-    shell.showItemInFolder(rawPath);
   });
-
-  handle(IPC.versions, () => ({
-    application: APPLICATION_VERSION,
-    electron: process.versions.electron,
-    node: process.versions.node,
-    chrome: process.versions.chrome
-  }));
 };
 
 const registerCloseGuard = (window: BrowserWindow): void => {
   const senderId = window.webContents.id;
   const coordinator = new CloseCoordinator(randomUUID);
-  closeCoordinators.set(senderId, coordinator);
-
-  window.on('closed', () => {
-    closeCoordinators.delete(senderId);
-  });
-
-  window.on('close', (event) => {
-    if (coordinator.closeApproved) return;
-    event.preventDefault();
-    if (coordinator.isGuarding) return;
-
-    const ports = createOwnerBoundPorts(window);
-    let requestId: string | undefined;
-    void coordinateClose(
-      coordinator,
-      (nextRequestId) => {
-        requestId = nextRequestId;
-        window.webContents.send(IPC.flushBeforeClose, nextRequestId);
-      },
-      () => manager.runExclusive(() => guardUnsavedSession(manager, ports)),
-      CLOSE_FLUSH_TIMEOUT_MS
-    ).then(async (outcome) => {
-      if (outcome === 'approved') {
-        window.close();
-        return;
-      }
-      if (requestId && !window.isDestroyed()) {
-        window.webContents.send(IPC.closeCanceled, requestId);
-      }
-      if (outcome === 'flush-timeout' && !window.isDestroyed()) {
-        await showSafeError(window, CLOSE_FLUSH_TIMEOUT_MESSAGE);
-      }
-    }).catch(async (error: unknown) => {
-      coordinator.abortClose();
-      if (requestId && !window.isDestroyed()) {
-        window.webContents.send(IPC.closeCanceled, requestId);
-      }
-      console.error(error);
-      if (!window.isDestroyed()) await showSafeError(window, GENERIC_USER_MESSAGE);
-    });
+  wireWindowCloseGuard({
+    senderId,
+    coordinator,
+    coordinators: closeCoordinators,
+    onClose: (listener) => {
+      window.on('close', listener);
+    },
+    onClosed: (listener) => {
+      window.on('closed', listener);
+    },
+    send: (channel, requestId) => {
+      window.webContents.send(channel, requestId);
+    },
+    isDestroyed: () => window.isDestroyed(),
+    close: () => window.close(),
+    coordinate: coordinateClose,
+    guardUnsaved: () => manager.runExclusive(() =>
+      guardUnsavedSession(manager, createOwnerBoundPorts(window))
+    ),
+    showError: (message) => showSafeError(window, message),
+    reportUnexpected: (error) => console.error(error),
+    timeoutMs: CLOSE_FLUSH_TIMEOUT_MS,
+    timeoutMessage: CLOSE_FLUSH_TIMEOUT_MESSAGE,
+    genericMessage: GENERIC_USER_MESSAGE
   });
 };
 

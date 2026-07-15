@@ -19,6 +19,7 @@ export class DraftSynchronizer {
       }
     };
     this.#pending = this.#pending.then(run, run);
+    void this.#pending.catch(() => undefined);
     return revision;
   }
 

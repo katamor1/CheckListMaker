@@ -68,4 +68,40 @@ describe('DraftSynchronizer', () => {
       .toBe(snapshot);
     expect(enqueue).not.toHaveBeenCalled();
   });
+
+  it('sinks an unobserved transport rejection while preserving it for a later flush', async () => {
+    const failure = new Error('transport rejected');
+    const synchronizer = new DraftSynchronizer(vi.fn().mockRejectedValue(failure), 0);
+    const unhandled: unknown[] = [];
+    const observe = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', observe);
+    try {
+      synchronizer.enqueue(createProject('document_generation'));
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(unhandled).toEqual([]);
+      await expect(synchronizer.flush()).rejects.toBe(failure);
+    } finally {
+      process.off('unhandledRejection', observe);
+    }
+  });
+
+  it('sinks an unobserved refused revision while preserving it for a later flush', async () => {
+    const synchronizer = new DraftSynchronizer(
+      vi.fn().mockResolvedValue({ accepted: false, revision: 0 }),
+      0
+    );
+    const unhandled: unknown[] = [];
+    const observe = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', observe);
+    try {
+      synchronizer.enqueue(createProject('document_generation'));
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(unhandled).toEqual([]);
+      await expect(synchronizer.flush()).rejects.toThrow(
+        '最新の編集内容を同期できませんでした。操作を中止しました。'
+      );
+    } finally {
+      process.off('unhandledRejection', observe);
+    }
+  });
 });

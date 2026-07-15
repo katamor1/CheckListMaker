@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GENERIC_USER_MESSAGE } from '../shared/ipc-result.js';
 import type {
   DocumentGenerationDefinition,
-  ProjectDefinition,
   ProjectMode,
   SessionSnapshot,
   ValidationIssue
 } from '../shared/model.js';
-import { DraftSynchronizer, applyDraftEdit } from './draft-synchronizer.js';
+import { DraftSynchronizer } from './draft-synchronizer.js';
 import { GenerationSettingsForm } from './GenerationSettingsForm.js';
 import { saveThenExport } from './session-actions.js';
 import { SessionOperationQueue } from './session-operation-queue.js';
+import {
+  RendererSessionOrchestrator,
+  safeRendererErrorMessage
+} from './session-orchestrator.js';
 
 type Versions = {
   application: string;
@@ -22,9 +24,6 @@ type Versions = {
 const modeLabel = (mode: ProjectMode): string =>
   mode === 'existing_document' ? '既存文書を検証' : '文書を生成して検証';
 
-const safeErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : GENERIC_USER_MESSAGE;
-
 export const App = () => {
   const [summary, setSummary] = useState<SessionSnapshot | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
@@ -35,6 +34,7 @@ export const App = () => {
   const summaryRef = useRef<SessionSnapshot | null>(null);
   const synchronizerRef = useRef<DraftSynchronizer | null>(null);
   const operationQueueRef = useRef<SessionOperationQueue | null>(null);
+  const orchestratorRef = useRef<RendererSessionOrchestrator | null>(null);
 
   if (!synchronizerRef.current) {
     synchronizerRef.current = new DraftSynchronizer(
@@ -47,71 +47,36 @@ export const App = () => {
   }
   const synchronizer = synchronizerRef.current;
   const operationQueue = operationQueueRef.current;
+  if (!orchestratorRef.current) {
+    orchestratorRef.current = new RendererSessionOrchestrator({
+      bridge: window.checklistMaker,
+      summaryRef,
+      synchronizer,
+      operationQueue,
+      publishSummary: setSummary,
+      reportError: (error) => setNotice(safeRendererErrorMessage(error))
+    });
+  }
+  const orchestrator = orchestratorRef.current;
 
   useEffect(() => {
     void window.checklistMaker
       .getVersions()
       .then(setVersions)
-      .catch((error: unknown) => setNotice(safeErrorMessage(error)));
+      .catch((error: unknown) => setNotice(safeRendererErrorMessage(error)));
   }, []);
 
-  useEffect(() => {
-    const unsubscribeFlush = window.checklistMaker.onFlushBeforeClose((requestId) => {
-      void operationQueue.beginClose(requestId, async () => {
-        await synchronizer.flush();
-        await window.checklistMaker.closeReady(requestId);
-      }).catch((error: unknown) => {
-        setNotice(safeErrorMessage(error));
-      });
-    });
-    const unsubscribeCanceled = window.checklistMaker.onCloseCanceled((requestId) => {
-      operationQueue.cancelClose(requestId);
-    });
-    return () => {
-      unsubscribeFlush();
-      unsubscribeCanceled();
-      operationQueue.dispose();
-    };
-  }, [operationQueue, synchronizer]);
+  useEffect(() => orchestrator.subscribeClose(), [orchestrator]);
 
   const project = summary?.project;
   const errorCount = useMemo(() => issues.filter((issue) => issue.severity === 'error').length, [issues]);
   const warningCount = issues.length - errorCount;
 
-  const adoptSummary = (next: SessionSnapshot): void => {
-    synchronizer.reset(next.revision);
-    summaryRef.current = next;
-    setSummary(next);
-  };
-
-  const commitProject = (update: (project: ProjectDefinition) => ProjectDefinition): void => {
-    const current = summaryRef.current;
-    if (!current) return;
-    const next = applyDraftEdit(
-      current,
-      update,
-      (nextProject) => synchronizer.enqueue(nextProject),
-      operationQueue.blocked
-    );
-    if (next === current) return;
-    summaryRef.current = next;
-    setSummary(next);
-  };
-
-  const runSessionOperation = (operation: () => Promise<void>): void => {
-    void operationQueue.run(async () => {
-      await synchronizer.flush();
-      await operation();
-    }).catch((error: unknown) => {
-      setNotice(safeErrorMessage(error));
-    });
-  };
-
   const createProject = (mode: ProjectMode): void => {
-    runSessionOperation(async () => {
+    void orchestrator.runSessionOperation(async () => {
       const result = await window.checklistMaker.newProject(mode);
       if (result.canceled || !result.summary) return;
-      adoptSummary(result.summary);
+      orchestrator.adoptSummary(result.summary);
       setIssues([]);
       setLastExportPath(null);
       setNotice(`${modeLabel(mode)}プロジェクトを作成しました。`);
@@ -119,10 +84,10 @@ export const App = () => {
   };
 
   const openProject = (): void => {
-    runSessionOperation(async () => {
+    void orchestrator.runSessionOperation(async () => {
       const result = await window.checklistMaker.openProject();
       if (result.canceled || !result.summary) return;
-      adoptSummary(result.summary);
+      orchestrator.adoptSummary(result.summary);
       setIssues([]);
       setLastExportPath(null);
       setNotice('プロジェクトを開きました。');
@@ -130,7 +95,7 @@ export const App = () => {
   };
 
   const updateProjectName = (name: string): void => {
-    commitProject((current) => ({
+    orchestrator.commitProject((current) => ({
       ...current,
       name,
       updatedAt: new Date().toISOString()
@@ -138,7 +103,7 @@ export const App = () => {
   };
 
   const updateGeneration = (generation: DocumentGenerationDefinition): void => {
-    commitProject((current) => ({
+    orchestrator.commitProject((current) => ({
       ...current,
       generation,
       updatedAt: new Date().toISOString()
@@ -147,10 +112,10 @@ export const App = () => {
 
   const selectTarget = (): void => {
     if (!summaryRef.current) return;
-    runSessionOperation(async () => {
+    void orchestrator.runSessionOperation(async () => {
       const next = await window.checklistMaker.selectTarget();
       if (!next) return;
-      adoptSummary(next);
+      orchestrator.adoptSummary(next);
       const targetName = next.project.target?.originalFileName;
       if (targetName) setNotice(`${targetName}を主対象文書として登録しました。`);
     });
@@ -158,7 +123,7 @@ export const App = () => {
 
   const validate = (): void => {
     if (!summaryRef.current) return;
-    runSessionOperation(async () => {
+    void orchestrator.runSessionOperation(async () => {
       const nextIssues = await window.checklistMaker.validateProject();
       setIssues(nextIssues);
       setNotice(nextIssues.length === 0 ? '事前検査に合格しました。' : `事前検査で${nextIssues.length}件の指摘があります。`);
@@ -167,9 +132,9 @@ export const App = () => {
 
   const save = (saveAs = false): void => {
     if (!summaryRef.current) return;
-    runSessionOperation(async () => {
+    void orchestrator.runSessionOperation(async () => {
       const result = await window.checklistMaker.saveProject(saveAs);
-      adoptSummary(result.summary);
+      orchestrator.adoptSummary(result.summary);
       if (result.canceled) return;
       if (result.summary.dirty) {
         setNotice('保存中に新しい変更があったため、未保存のままです。');
@@ -181,10 +146,14 @@ export const App = () => {
 
   const exportPackage = (): void => {
     if (!summaryRef.current) return;
-    runSessionOperation(async () => {
+    void orchestrator.runSessionOperation(async () => {
       const current = summaryRef.current;
       if (!current) return;
-      const result = await saveThenExport(current, window.checklistMaker, adoptSummary);
+      const result = await saveThenExport(
+        current,
+        window.checklistMaker,
+        (next) => orchestrator.adoptSummary(next)
+      );
       if (result.canceled || !result.path) return;
       setLastExportPath(result.path);
       setNotice(`Copilot用ZIPを生成しました（${result.fileCount ?? 0}ファイル）。`);
@@ -194,7 +163,7 @@ export const App = () => {
   const openExportFolder = (): void => {
     const path = lastExportPath;
     if (!path) return;
-    runSessionOperation(async () => window.checklistMaker.openFolder(path));
+    void orchestrator.runSessionOperation(async () => window.checklistMaker.openFolder(path));
   };
 
   return (

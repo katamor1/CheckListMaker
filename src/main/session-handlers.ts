@@ -58,7 +58,6 @@ const expectedFailure = async <T>(
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof UserFacingError) throw error;
     throw new UserFacingError(code, message, error);
   }
 };
@@ -86,7 +85,7 @@ export const SESSION_INVOKE_CHANNELS = [
   IPC.closeReady
 ] as const;
 
-type SessionInvokeChannel = (typeof SESSION_INVOKE_CHANNELS)[number];
+export type SessionInvokeChannel = (typeof SESSION_INVOKE_CHANNELS)[number];
 export type SessionHandler = (
   context: SessionHandlerContext,
   ...args: unknown[]
@@ -127,7 +126,11 @@ export const createSessionHandlers = (
     );
   }),
   [IPC.exportPackage]: async ({ senderId }) => {
-    const result = await dependencies.controllerFor(senderId).export();
+    const result = await expectedFailure(
+      () => dependencies.controllerFor(senderId).export(),
+      'PACKAGE_EXPORT_FAILED',
+      'パッケージを作成できませんでした。保存先とアクセス権を確認してください。'
+    );
     if (result.canceled) return result;
     if (!result.path) {
       throw new UserFacingError(
