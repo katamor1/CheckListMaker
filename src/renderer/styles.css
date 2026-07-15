@@ -1,0 +1,79 @@
+:root {
+  color: #19212b;
+  background: #eef1f4;
+  font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input { font: inherit; }
+button {
+  border: 1px solid #1d5f89;
+  border-radius: 8px;
+  background: #146b9d;
+  color: white;
+  padding: 0.68rem 1rem;
+  cursor: pointer;
+  font-weight: 650;
+}
+button:hover:not(:disabled) { background: #0d567f; }
+button:focus-visible, input:focus-visible { outline: 3px solid #f3a712; outline-offset: 2px; }
+button:disabled { cursor: wait; opacity: 0.55; }
+button.secondary { background: white; color: #23415a; border-color: #a9bac6; }
+button.secondary:hover:not(:disabled) { background: #f3f7fa; }
+button.link-button { border: 0; background: transparent; color: #b9def6; padding: 0; text-decoration: underline; }
+
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 2.25rem clamp(1.25rem, 4vw, 4rem);
+  color: white;
+  background: linear-gradient(125deg, #0d344d, #146b9d);
+}
+h1 { margin: 0.1rem 0 0.4rem; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -0.04em; }
+h2 { margin: 0.15rem 0; font-size: 1.28rem; }
+p { line-height: 1.6; }
+.eyebrow { margin: 0; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.16em; opacity: 0.78; }
+.lede { margin: 0; max-width: 52rem; color: #d8ecf8; }
+.versions { margin: 0; align-self: flex-start; display: grid; gap: 0.35rem; min-width: 11rem; }
+.versions div { display: flex; justify-content: space-between; gap: 1rem; }
+.versions dt { opacity: 0.7; }
+.versions dd { margin: 0; font-variant-numeric: tabular-nums; }
+.command-bar { display: flex; flex-wrap: wrap; gap: 0.7rem; padding: 1rem clamp(1.25rem, 4vw, 4rem); background: white; border-bottom: 1px solid #d7dfe5; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(20rem, 0.85fr); gap: 1rem; padding: 1.25rem clamp(1.25rem, 4vw, 4rem); flex: 1; }
+.panel { background: white; border: 1px solid #d7dfe5; border-radius: 14px; padding: 1.25rem; box-shadow: 0 8px 24px rgb(28 51 68 / 7%); }
+.panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+.status { display: inline-flex; align-items: center; border-radius: 999px; padding: 0.28rem 0.62rem; font-size: 0.78rem; font-weight: 750; }
+.status.ok { background: #daf3e6; color: #145b35; }
+.status.warning { background: #fff0cc; color: #7b4c00; }
+.status.neutral { background: #e5edf3; color: #344d5e; }
+.field { display: grid; gap: 0.4rem; font-weight: 650; }
+.field input { width: 100%; border: 1px solid #a9bac6; border-radius: 8px; padding: 0.7rem 0.8rem; }
+.project-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 1rem 0; }
+.project-stats div { border-radius: 10px; background: #f3f6f8; padding: 0.75rem; }
+.project-stats dt { font-size: 0.78rem; color: #5b6f7d; }
+.project-stats dd { margin: 0.35rem 0 0; font-weight: 760; overflow-wrap: anywhere; }
+.document-card { display: flex; justify-content: space-between; align-items: center; gap: 1rem; border: 1px dashed #9eb2bf; border-radius: 10px; padding: 0.9rem; }
+.document-card p { margin: 0.18rem 0 0; color: #536876; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1rem; }
+.issue-count { color: #526876; font-size: 0.85rem; white-space: nowrap; }
+.empty-state, .empty-workspace { color: #526876; }
+.empty-workspace { margin: auto; max-width: 48rem; padding: 4rem 1.5rem; text-align: center; }
+.issue-list { display: grid; gap: 0.7rem; margin: 0; padding: 0; list-style: none; }
+.issue-list li { display: grid; gap: 0.28rem; padding: 0.8rem; border-left: 4px solid; border-radius: 6px; background: #f7f9fa; }
+.issue-list li.error { border-color: #b42318; }
+.issue-list li.warning { border-color: #d97706; }
+.issue-list span { color: #536876; font-size: 0.88rem; }
+.issue-list code { justify-self: start; color: #435563; font-size: 0.72rem; }
+.app-footer { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3.5rem; padding: 0.65rem clamp(1.25rem, 4vw, 4rem); background: #132b3b; color: #e9f3f9; }
+.app-footer p { margin: 0; }
+
+@media (max-width: 860px) {
+  .app-header { display: grid; }
+  .workspace { grid-template-columns: 1fr; }
+  .project-stats { grid-template-columns: 1fr; }
+  .app-footer { align-items: flex-start; flex-direction: column; }
+}
