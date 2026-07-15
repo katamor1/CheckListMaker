@@ -1,0 +1,90 @@
+{
+  "authority": "explanatory_only",
+  "aiInput": false,
+  "authoritativeResult": {
+    "available": false,
+    "fileName": "result.json",
+    "plannedFor": "Plan 3"
+  },
+  "conditions": [
+    {
+      "conditionId": "COND-0001",
+      "expectedJudgment": "valid",
+      "repairBehavior": "inherited",
+      "effectiveRepairPolicy": "suggest_only",
+      "example": "目的には設備状態監視の対象と確認可能な達成事項が具体的に記載されているため、適合とする。修正方針はプロジェクト既定を継承する。"
+    },
+    {
+      "conditionId": "COND-0002",
+      "expectedJudgment": "invalid",
+      "repairBehavior": "inherited",
+      "effectiveRepairPolicy": "suggest_only",
+      "example": "適用範囲に対象はあるが除外の明示がないため、不適合とする。原文は変更せず、除外の追記案だけを示す。"
+    },
+    {
+      "conditionId": "COND-0003",
+      "expectedJudgment": "invalid",
+      "repairBehavior": "auto_fix",
+      "effectiveRepairPolicy": "auto_fix",
+      "example": "禁止された曖昧表現「適切に」を検出したため、不適合とする。根拠が揃い安全に置換できる場合だけ自動修正する。"
+    },
+    {
+      "conditionId": "COND-0004",
+      "expectedJudgment": "invalid",
+      "repairBehavior": "auto_fix",
+      "effectiveRepairPolicy": "auto_fix",
+      "example": "主要パラメータの監視周期 500 ms は上限 250 ms を超えるため、不適合とする。上位資料の値を根拠に安全な場合だけ自動修正する。"
+    },
+    {
+      "conditionId": "COND-0005",
+      "expectedJudgment": "needs_information",
+      "repairBehavior": "do_not_modify",
+      "effectiveRepairPolicy": "do_not_modify",
+      "example": "最終承認者を特定できないため、情報不足として停止する。承認者を推測せず、問題、根拠、確認事項だけを記録する。"
+    },
+    {
+      "conditionId": "COND-0006",
+      "expectedJudgment": "invalid",
+      "repairBehavior": "do_not_modify",
+      "effectiveRepairPolicy": "do_not_modify",
+      "example": "改訂日 2026-06-30 は基準日 2026-07-01 より前であるため、不適合とする。日付の原文変更や具体的な置換案は生成しない。"
+    },
+    {
+      "conditionId": "COND-0007",
+      "expectedJudgment": "valid",
+      "repairBehavior": "suggest_only",
+      "effectiveRepairPolicy": "suggest_only",
+      "example": "管理番号 DMS-2026 は DMS-#### 形式に一致するため、適合とする。明示指定どおり原文は変更しない。"
+    },
+    {
+      "conditionId": "COND-0008",
+      "expectedJudgment": "valid",
+      "repairBehavior": "suggest_only",
+      "effectiveRepairPolicy": "suggest_only",
+      "example": "機密区分「社内」は許可値に含まれるため、適合とする。明示指定どおり原文は変更しない。"
+    },
+    {
+      "conditionId": "COND-0009",
+      "expectedJudgment": "invalid",
+      "repairBehavior": "auto_fix",
+      "effectiveRepairPolicy": "auto_fix",
+      "example": "参考設計書の 500 ms より拘束力のある品質保証規程の 250 ms 以下を優先する。対象文書の 500 ms は上位資料と不一致のため、不適合とする。",
+      "referenceResolution": {
+        "authorityOrder": [
+          "binding",
+          "approved",
+          "working",
+          "reference"
+        ],
+        "selectedAuthority": "binding",
+        "selectedReference": "REF-001",
+        "selectedSource": "quality-assurance-policy.pdf",
+        "selectedValue": "250 ms以下",
+        "lowerAuthority": "reference",
+        "lowerReference": "REF-004",
+        "lowerSource": "reference-design.docx",
+        "rejectedValue": "500 ms"
+      }
+    }
+  ]
+}
