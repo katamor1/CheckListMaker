@@ -104,16 +104,22 @@ export class RendererSessionOrchestrator {
   }
 
   subscribeClose(): () => void {
+    const activeRequests = new Map<string, symbol>();
     const unsubscribeFlush = this.options.bridge.onFlushBeforeClose((requestId) => {
+      const marker = activeRequests.get(requestId) ?? Symbol(requestId);
+      activeRequests.set(requestId, marker);
       const closing = this.options.operationQueue.beginClose(requestId, async () => {
+        if (activeRequests.get(requestId) !== marker) return;
         await this.options.synchronizer.flush();
+        if (activeRequests.get(requestId) !== marker) return;
         await this.options.bridge.closeReady(requestId);
       });
       void closing.catch((error: unknown) => {
-        this.options.reportError(error);
+        if (activeRequests.get(requestId) === marker) this.options.reportError(error);
       });
     });
     const unsubscribeCanceled = this.options.bridge.onCloseCanceled((requestId) => {
+      activeRequests.delete(requestId);
       this.options.operationQueue.cancelClose(requestId);
     });
     let cleanedUp = false;
@@ -122,6 +128,7 @@ export class RendererSessionOrchestrator {
       cleanedUp = true;
       unsubscribeFlush();
       unsubscribeCanceled();
+      activeRequests.clear();
       this.options.operationQueue.dispose();
     };
   }

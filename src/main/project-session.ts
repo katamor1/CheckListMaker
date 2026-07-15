@@ -9,7 +9,10 @@ import type {
 import { createProject } from '../shared/defaults.js';
 import { validateProject } from '../shared/validation.js';
 import { assertProjectDefinition } from '../shared/project-structure.js';
-import { UserFacingError } from '../shared/ipc-result.js';
+import {
+  projectSaveValidationError,
+  UserFacingError
+} from '../shared/ipc-result.js';
 import { DocumentRegistry } from './document-registry.js';
 import { ProjectStore } from './project-store.js';
 import { CopilotPackageGenerator } from './package-generator.js';
@@ -190,7 +193,7 @@ export class ProjectSessionManager {
   async #saveCurrent(saveAs: boolean, pickPath: SavePathPicker): Promise<SessionSaveResult> {
     const current = this.requireCurrent();
     const firstError = validateProject(current.project).find((issue) => issue.severity === 'error');
-    if (firstError) throw new UserFacingError('PROJECT_INVALID', `保存できません: ${firstError.message}`);
+    if (firstError) throw projectSaveValidationError(firstError);
     const path = saveAs ? await pickPath(current.project.name) : current.path ?? await pickPath(current.project.name);
     if (!path) return { canceled: true, summary: this.currentSummary() };
     const revisionAtStart = current.revision;

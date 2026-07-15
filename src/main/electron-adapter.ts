@@ -45,26 +45,28 @@ export const registerElectronIpc = <
   const installed = new Set<string>();
   const handle = (
     channel: string,
-    operation: (event: TEvent, ...args: unknown[]) => Promise<unknown> | unknown
+    operation: (owner: TOwner, event: TEvent, ...args: unknown[]) => Promise<unknown> | unknown
   ): void => {
     if (installed.has(channel)) throw new Error(`Duplicate IPC handler: ${channel}`);
     installed.add(channel);
     options.installHandler(channel, (event, ...args) =>
-      options.runSafely(() => operation(event, ...args))
+      options.runSafely(() => {
+        const owner = options.resolveOwner(event.sender);
+        if (!owner) return options.ownerUnavailable();
+        return operation(owner, event, ...args);
+      })
     );
   };
 
   for (const channel of options.sessionChannels) {
-    handle(channel, (event, ...args) => {
-      const owner = options.resolveOwner(event.sender);
-      if (!owner) return options.ownerUnavailable();
+    handle(channel, (owner, event, ...args) => {
       const handler = options.handlersFor(owner)[channel];
       return handler({ senderId: event.sender.id }, ...args);
     });
   }
 
   for (const direct of options.directHandlers) {
-    handle(direct.channel, direct.operation);
+    handle(direct.channel, (_owner, event, ...args) => direct.operation(event, ...args));
   }
 };
 

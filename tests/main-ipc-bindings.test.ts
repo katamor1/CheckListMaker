@@ -36,6 +36,7 @@ describe('registerMainIpcBindings', () => {
       node: '24.10.0',
       chrome: '142.0.0'
     };
+    const getVersions = vi.fn(() => versions);
     const reportUnexpected = vi.fn();
 
     registerMainIpcBindings({
@@ -45,7 +46,7 @@ describe('registerMainIpcBindings', () => {
       handlersFor,
       allowedOutputPaths,
       showItemInFolder,
-      versions: () => versions,
+      versions: getVersions,
       reportUnexpected
     });
 
@@ -53,6 +54,7 @@ describe('registerMainIpcBindings', () => {
       allowedOutputPaths,
       handlers,
       handlersFor,
+      getVersions,
       installed,
       owner,
       removeHandler,
@@ -128,5 +130,28 @@ describe('registerMainIpcBindings', () => {
       error: { code: 'INTERNAL_ERROR', message: '処理に失敗しました。再度お試しください。' }
     });
     expect(fixture.reportUnexpected).toHaveBeenCalledWith(unexpected);
+  });
+
+  it('rejects direct invokes from an unavailable owner before any direct action runs', async () => {
+    const fixture = createFixture();
+    const unavailableEvent = { sender: { id: 99 } };
+    const unavailable = {
+      ok: false,
+      error: {
+        brand: 'checklistmaker.user-facing-error.v1',
+        code: 'WINDOW_UNAVAILABLE',
+        message: '処理に失敗しました。再度お試しください。'
+      }
+    };
+
+    await expect(
+      fixture.installed.get(IPC.openFolder)!(unavailableEvent, 'C:\\allowed\\package.zip')
+    ).resolves.toEqual(unavailable);
+    await expect(fixture.installed.get(IPC.versions)!(unavailableEvent)).resolves.toEqual(unavailable);
+
+    expect(fixture.showItemInFolder).not.toHaveBeenCalled();
+    expect(fixture.getVersions).not.toHaveBeenCalled();
+    expect(fixture.resolveOwner).toHaveBeenNthCalledWith(1, unavailableEvent.sender);
+    expect(fixture.resolveOwner).toHaveBeenNthCalledWith(2, unavailableEvent.sender);
   });
 });

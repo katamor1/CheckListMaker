@@ -153,4 +153,39 @@ describe('SessionOperationQueue', () => {
     queue.cancelClose('REQ-1');
     expect(queue.blocked).toBe(false);
   });
+
+  it('detaches a matching canceled close from the serial tail while its flush is pending', async () => {
+    const flushStarted = deferred();
+    const releaseOldFlush = deferred();
+    const calls: string[] = [];
+    const queue = new SessionOperationQueue();
+    const oldClose = queue.beginClose('REQ-OLD', async () => {
+      calls.push('old-flush:start');
+      flushStarted.resolve();
+      await releaseOldFlush.promise;
+      calls.push('old-flush:end');
+    });
+
+    await flushStarted.promise;
+    queue.cancelClose('REQ-OLD');
+
+    const regular = queue.run(async () => {
+      calls.push('regular');
+      return 'regular-complete';
+    });
+    await vi.waitFor(() => expect(calls).toContain('regular'), { timeout: 500 });
+    await expect(regular).resolves.toBe('regular-complete');
+
+    const freshClose = queue.beginClose('REQ-FRESH', async () => {
+      calls.push('fresh-flush');
+    });
+    await vi.waitFor(() => expect(calls).toContain('fresh-flush'), { timeout: 500 });
+    await expect(freshClose).resolves.toBeUndefined();
+    expect(calls).toEqual(['old-flush:start', 'regular', 'fresh-flush']);
+
+    queue.cancelClose('REQ-FRESH');
+    releaseOldFlush.resolve();
+    await oldClose;
+    expect(queue.blocked).toBe(false);
+  });
 });

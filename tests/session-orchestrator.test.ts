@@ -8,6 +8,16 @@ import {
   safeRendererErrorMessage
 } from '../src/renderer/session-orchestrator.js';
 
+const deferred = <T = void>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+};
+
 const snapshot = (revision = 0): SessionSnapshot => ({
   project: createProject('document_generation'),
   dirty: false,
@@ -220,6 +230,72 @@ describe('RendererSessionOrchestrator', () => {
     secondCleanup();
     expect(bridge.unsubscribeFlush).toHaveBeenCalledTimes(2);
     expect(bridge.unsubscribeCanceled).toHaveBeenCalledTimes(2);
+  });
+
+  it('suppresses stale close acknowledgement and errors after a pending flush is canceled', async () => {
+    const bridge = createBridge();
+    const resolveGate = deferred();
+    const rejectGate = deferred();
+    const staleFailure = new Error('stale close flush failed');
+    const synchronizer = {
+      enqueue: vi.fn(),
+      reset: vi.fn(),
+      flush: vi.fn()
+        .mockImplementationOnce(() => resolveGate.promise)
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockImplementationOnce(() => rejectGate.promise)
+        .mockResolvedValueOnce(undefined)
+    };
+    const queue = new SessionOperationQueue();
+    const reportError = vi.fn();
+    const orchestrator = new RendererSessionOrchestrator({
+      bridge: bridge.bridge,
+      summaryRef: { current: snapshot() },
+      synchronizer,
+      operationQueue: queue,
+      publishSummary: vi.fn(),
+      reportError
+    });
+    const unhandled: unknown[] = [];
+    const observeUnhandled = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', observeUnhandled);
+    const cleanup = orchestrator.subscribeClose();
+
+    try {
+      bridge.flushListener()('REQ-STALE-RESOLVE');
+      await vi.waitFor(() => expect(synchronizer.flush).toHaveBeenCalledTimes(1));
+      bridge.canceledListener()('REQ-STALE-RESOLVE');
+
+      const regular = vi.fn().mockResolvedValue('regular-complete');
+      const regularResult = orchestrator.runSessionOperation(regular);
+      await vi.waitFor(() => expect(regular).toHaveBeenCalledOnce(), { timeout: 500 });
+      await expect(regularResult).resolves.toBe('regular-complete');
+
+      bridge.flushListener()('REQ-FRESH');
+      await vi.waitFor(() => expect(bridge.bridge.closeReady).toHaveBeenCalledWith('REQ-FRESH'));
+      bridge.canceledListener()('REQ-FRESH');
+      resolveGate.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(bridge.bridge.closeReady).not.toHaveBeenCalledWith('REQ-STALE-RESOLVE');
+
+      bridge.flushListener()('REQ-STALE-REJECT');
+      await vi.waitFor(() => expect(synchronizer.flush).toHaveBeenCalledTimes(4));
+      bridge.canceledListener()('REQ-STALE-REJECT');
+      const afterRejectCancel = orchestrator.runSessionOperation(async () => 'after-reject-cancel');
+      await expect(afterRejectCancel).resolves.toBe('after-reject-cancel');
+      rejectGate.reject(staleFailure);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(reportError).not.toHaveBeenCalledWith(staleFailure);
+      expect(bridge.bridge.closeReady).not.toHaveBeenCalledWith('REQ-STALE-REJECT');
+      expect(unhandled).toEqual([]);
+    } finally {
+      resolveGate.resolve();
+      rejectGate.resolve();
+      cleanup();
+      process.off('unhandledRejection', observeUnhandled);
+    }
   });
 });
 

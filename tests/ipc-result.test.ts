@@ -3,6 +3,7 @@ import {
   GENERIC_USER_MESSAGE,
   UserFacingError,
   ipcSuccess,
+  projectSaveValidationError,
   runIpcOperation
 } from '../src/shared/ipc-result.js';
 
@@ -83,6 +84,28 @@ describe('IPC result boundary', () => {
     });
     expect(JSON.stringify(result)).not.toContain('secret stack detail');
     expect(reportUnexpected).toHaveBeenCalledOnce();
+  });
+
+  it('maps only known validation codes to fixed save feedback and safely falls back for unknown codes', () => {
+    const known = projectSaveValidationError({
+      code: 'GENERATION_INSTRUCTIONS_REQUIRED',
+      message: 'C:\\private\\project.clmproj\n    at project:save'
+    });
+    expect(known).toMatchObject({
+      code: 'PROJECT_INVALID',
+      message: '保存できません: 文書生成指示が空です。'
+    });
+    expect(known.message).not.toContain('C:\\private');
+
+    const unknown = projectSaveValidationError({
+      code: 'C:\\private\\project.clmproj',
+      message: 'unknown-ipc:private-action'
+    });
+    expect(unknown).toMatchObject({
+      code: 'PROJECT_INVALID',
+      message: 'プロジェクトデータが不正です。'
+    });
+    expect(unknown.message).not.toContain('private');
   });
 
 });
