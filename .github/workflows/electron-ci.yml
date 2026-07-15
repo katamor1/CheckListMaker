@@ -35,6 +35,33 @@ jobs:
         shell: pwsh
         run: npm install --no-audit --no-fund
 
-      - name: Verify types, tests, and production build
+      - name: Prepare diagnostic directory
         shell: pwsh
-        run: npm run verify
+        run: New-Item -ItemType Directory -Force artifacts/ci | Out-Null
+
+      - name: Type-check
+        shell: pwsh
+        run: |
+          npm run typecheck 2>&1 | Tee-Object -FilePath artifacts/ci/typecheck.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          npm test 2>&1 | Tee-Object -FilePath artifacts/ci/test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build production application
+        shell: pwsh
+        run: |
+          npm run build 2>&1 | Tee-Object -FilePath artifacts/ci/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload verification logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-ci-logs
+          path: artifacts/ci/*.log
+          if-no-files-found: ignore
+          retention-days: 7
