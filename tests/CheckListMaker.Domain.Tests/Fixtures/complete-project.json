@@ -184,26 +184,24 @@
             "type": "length_or_count",
             "id": "COND-0005",
             "scope": {
-              "type": "semantic_locator",
+              "type": "table",
               "onNotFound": "needs_information",
               "sourceIds": [],
-              "description": "承認者と承認手順"
+              "description": "承認情報",
+              "expectedColumns": []
             },
             "measure": "occurrences",
-            "operator": "greater_than_or_equal",
-            "value": 1,
-            "occurrenceText": "承認"
+            "operator": "less_than_or_equal",
+            "value": 0,
+            "occurrenceText": "未定"
           },
           {
             "type": "date_or_deadline",
             "id": "COND-0006",
             "scope": {
-              "type": "section",
+              "type": "entire_document",
               "onNotFound": "needs_information",
-              "sourceIds": [],
-              "heading": "6. スケジュール",
-              "matchMode": "semantic",
-              "includeSubsections": true
+              "sourceIds": []
             },
             "subject": "改訂日",
             "operator": "on_or_after",
@@ -224,11 +222,9 @@
             "type": "pattern",
             "id": "COND-0007",
             "scope": {
-              "type": "table",
+              "type": "entire_document",
               "onNotFound": "needs_information",
-              "sourceIds": [],
-              "description": "文書情報",
-              "expectedColumns": []
+              "sourceIds": []
             },
             "preset": "custom",
             "pattern": "^DMS-[0-9]{4}$",
@@ -255,8 +251,8 @@
         "id": "CHK-0005",
         "title": "参考資料整合性",
         "description": "監視周期と用語定義を参考資料間で照合する",
-        "required": true,
-        "allowNotApplicable": false,
+        "required": false,
+        "allowNotApplicable": true,
         "conditionLogic": "all",
         "repairPolicy": "auto_fix",
         "conditions": [

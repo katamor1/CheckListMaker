@@ -105,8 +105,10 @@ class SampleContentTests(unittest.TestCase):
             "不適合とする。上位資料の値を根拠に安全な場合だけ自動修正する。"
         ),
         "COND-0005": (
-            "最終承認者を特定できないため、情報不足として停止する。"
-            "承認者を推測せず、問題、根拠、確認事項だけを記録する。"
+            "対象範囲の「承認情報」表が存在しないため、onNotFound の "
+            "needs_information に従って情報不足として停止する。"
+            "本文にも最終承認者が「未定」とあり、承認者を推測せず、"
+            "問題、根拠、確認事項だけを記録する。"
         ),
         "COND-0006": (
             "改訂日 2026-06-30 は基準日 2026-07-01 より前であるため、"
@@ -551,6 +553,7 @@ class SampleContentTests(unittest.TestCase):
                 "aiInput",
                 "authoritativeResult",
                 "conditions",
+                "itemOutcomes",
             },
             set(outcomes),
         )
@@ -606,7 +609,10 @@ class SampleContentTests(unittest.TestCase):
             ),
             "COND-0005": (
                 "needs_information", "do_not_modify", "do_not_modify",
-                ("最終承認者", "情報不足として停止", "推測せず", "確認事項だけ"),
+                (
+                    "承認情報", "needs_information", "最終承認者", "未定",
+                    "情報不足として停止", "推測せず", "確認事項だけ",
+                ),
             ),
             "COND-0006": (
                 "invalid", "do_not_modify", "do_not_modify",

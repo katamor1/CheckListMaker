@@ -36,9 +36,9 @@ public sealed class ProjectContractRoundTripTests
         typeof(SectionScope),
         typeof(EntireDocumentScope),
         typeof(TableScope),
-        typeof(SemanticLocatorScope),
-        typeof(SectionScope),
         typeof(TableScope),
+        typeof(EntireDocumentScope),
+        typeof(EntireDocumentScope),
         typeof(EntireDocumentScope),
         typeof(SemanticLocatorScope)
     ];
@@ -61,6 +61,12 @@ public sealed class ProjectContractRoundTripTests
 
     private static readonly string[] ExpectedItemIds =
         ["CHK-0001", "CHK-0002", "CHK-0003", "CHK-0004", "CHK-0005"];
+
+    private static readonly bool[] ExpectedRequiredFlags =
+        [true, true, true, true, false];
+
+    private static readonly bool[] ExpectedAllowNotApplicableFlags =
+        [false, false, false, false, true];
 
     private static readonly int[] ExpectedConditionCounts = [2, 2, 2, 2, 1];
 
@@ -267,6 +273,12 @@ public sealed class ProjectContractRoundTripTests
             ExpectedItemIds,
             items.Select(static item => item.Id).ToArray());
         CollectionAssert.AreEqual(
+            ExpectedRequiredFlags,
+            items.Select(static item => item.Required).ToArray());
+        CollectionAssert.AreEqual(
+            ExpectedAllowNotApplicableFlags,
+            items.Select(static item => item.AllowNotApplicable).ToArray());
+        CollectionAssert.AreEqual(
             ExpectedConditionCounts,
             items.Select(static item => item.Conditions.Count).ToArray());
         CollectionAssert.AreEqual(
@@ -338,27 +350,35 @@ public sealed class ProjectContractRoundTripTests
         var count =
             AssertConditionType<LengthOrCountCondition>(conditions[4]);
         Assert.AreEqual(CountMeasure.Occurrences, count.Measure);
-        Assert.AreEqual(NumericOperator.GreaterThanOrEqual, count.Operator);
-        Assert.AreEqual(1, count.Value);
-        Assert.AreEqual("承認", count.OccurrenceText);
-        var approvalLocator =
-            AssertScopeType<SemanticLocatorScope>(count.Scope);
-        Assert.AreEqual("承認者と承認手順", approvalLocator.Description);
+        Assert.AreEqual(NumericOperator.LessThanOrEqual, count.Operator);
+        Assert.AreEqual(0, count.Value);
+        Assert.AreEqual("未定", count.OccurrenceText);
+        var approvalTable = AssertScopeType<TableScope>(count.Scope);
+        Assert.AreEqual("承認情報", approvalTable.Description);
+        Assert.AreEqual(
+            ScopeNotFoundBehavior.NeedsInformation,
+            approvalTable.OnNotFound);
+        Assert.IsEmpty(approvalTable.ExpectedColumns);
 
         var deadline =
             AssertConditionType<DateOrDeadlineCondition>(conditions[5]);
         Assert.AreEqual("改訂日", deadline.Subject);
         Assert.AreEqual(DateOperator.OnOrAfter, deadline.Operator);
         Assert.AreEqual(new DateOnly(2026, 7, 1), deadline.Value);
-        var scheduleSection = AssertScopeType<SectionScope>(deadline.Scope);
-        Assert.AreEqual("6. スケジュール", scheduleSection.Heading);
-        Assert.AreEqual(HeadingMatchMode.Semantic, scheduleSection.MatchMode);
+        var deadlineDocument =
+            AssertScopeType<EntireDocumentScope>(deadline.Scope);
+        Assert.AreEqual(
+            ScopeNotFoundBehavior.NeedsInformation,
+            deadlineDocument.OnNotFound);
 
         var pattern = AssertConditionType<PatternCondition>(conditions[6]);
         Assert.AreEqual(PatternPreset.Custom, pattern.Preset);
         Assert.AreEqual("^DMS-[0-9]{4}$", pattern.Pattern);
-        var informationTable = AssertScopeType<TableScope>(pattern.Scope);
-        Assert.AreEqual("文書情報", informationTable.Description);
+        var patternDocument =
+            AssertScopeType<EntireDocumentScope>(pattern.Scope);
+        Assert.AreEqual(
+            ScopeNotFoundBehavior.NeedsInformation,
+            patternDocument.OnNotFound);
 
         var oneOf = AssertConditionType<OneOfCondition>(conditions[7]);
         Assert.AreEqual("機密区分", oneOf.Subject);

@@ -1334,8 +1334,8 @@ class RegisteredSampleCatalogTests(unittest.TestCase):
     ]
     EXPECTED_PAYLOADS = {
         "existing-document/expected-outcomes.json": (
-            3959,
-            "98b0a934304d23491d8724de7b7781ae67f82c41193bbfa3853c141f7efc07d4",
+            4435,
+            "fa8af6807320d901be00e39c725808dd3e72e4c6eff29977f5088985bf6e2292",
         ),
         "existing-document/target/basic-design-before-review.docx": (
             37366,
