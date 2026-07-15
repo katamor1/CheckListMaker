@@ -151,6 +151,10 @@ export interface ProjectSummary {
   dirty: boolean;
 }
 
+export interface SessionSnapshot extends ProjectSummary {
+  revision: number;
+}
+
 export interface ExportResult {
   canceled: boolean;
   path?: string;
@@ -168,6 +172,20 @@ export interface SaveResult {
   canceled: boolean;
   path?: string;
   project?: ProjectDefinition;
+}
+
+export interface SessionSaveResult extends SaveResult {
+  summary: SessionSnapshot;
+}
+
+export interface SessionChangeResult {
+  canceled: boolean;
+  summary?: SessionSnapshot;
+}
+
+export interface DraftUpdateResult {
+  accepted: boolean;
+  revision: number;
 }
 
 export interface SelectedReferenceInput {

@@ -6,6 +6,11 @@ import { canonicalJson, jsonBytes, sha256 } from './crypto.js';
 import { DocumentRegistry } from './document-registry.js';
 import type { ChecklistDefinition, ChecklistTemplateDefinition, ProjectDefinition, SelectedDocument } from '../shared/model.js';
 import { FORMAT_VERSION } from '../shared/model.js';
+import {
+  assertPersistedProjectDefinition,
+  assertProjectDefinition,
+  assertRecord
+} from '../shared/project-structure.js';
 
 const cloneWithoutTokens = (project: ProjectDefinition): ProjectDefinition => ({
   ...project,
@@ -34,49 +39,53 @@ export class ProjectStore {
   constructor(private readonly registry: DocumentRegistry) {}
 
   async saveProject(destination: string, project: ProjectDefinition): Promise<void> {
-    const updated = { ...project, updatedAt: new Date().toISOString() };
-    const persisted = cloneWithoutTokens(updated);
+    const persisted = cloneWithoutTokens(project);
     const { checklist, ...metadata } = persisted;
     const files: ArchiveFile[] = [
       { path: 'project.json', role: 'project', mediaType: 'application/json', bytes: jsonBytes(metadata), readOnly: true },
       { path: 'checklist.json', role: 'checklist', mediaType: 'application/json', bytes: jsonBytes(checklist), readOnly: true }
     ];
 
-    if (updated.mode === 'existing_document') {
-      if (!updated.target) throw new Error('主対象文書がありません。');
-      files.push(await this.#assetFile(updated.target, 'target'));
+    if (project.mode === 'existing_document') {
+      if (!project.target) throw new Error('主対象文書がありません。');
+      files.push(await this.#assetFile(project.target, 'target'));
     } else {
-      if (!updated.generation) throw new Error('文書生成設定がありません。');
+      if (!project.generation) throw new Error('文書生成設定がありません。');
       files.push({
         path: 'generation/document-generation.json',
         role: 'generation_instruction',
         mediaType: 'application/json',
-        bytes: jsonBytes(updated.generation),
+        bytes: jsonBytes(project.generation),
         readOnly: true
       });
     }
 
-    for (const reference of updated.references) files.push(await this.#assetFile(reference.document, 'reference'));
+    for (const reference of project.references) files.push(await this.#assetFile(reference.document, 'reference'));
     await writeArchive(destination, files);
   }
 
   async openProject(source: string): Promise<ProjectDefinition> {
     const { entries } = await readArchive(source);
-    const metadata = parseJson<Omit<ProjectDefinition, 'checklist'>>(requireEntry(entries, 'project.json'), 'project.json');
-    const checklist = parseJson<ChecklistDefinition>(requireEntry(entries, 'checklist.json'), 'checklist.json');
-    if (metadata.formatVersion !== FORMAT_VERSION) throw new Error('未対応のプロジェクト形式です。');
-    const project = { ...metadata, checklist } as ProjectDefinition;
+    const metadata = parseJson<unknown>(requireEntry(entries, 'project.json'), 'project.json');
+    const checklist = parseJson<unknown>(requireEntry(entries, 'checklist.json'), 'checklist.json');
+    assertRecord(metadata);
+    const persisted: unknown = { ...metadata, checklist };
+    assertPersistedProjectDefinition(persisted);
 
-    const target = project.target ? this.#restoreDocument(project.target, requireEntry(entries, project.target.storedPath)) : undefined;
-    const references = project.references.map((reference) => ({
+    const target = persisted.target
+      ? this.#restoreDocument(persisted.target, requireEntry(entries, persisted.target.storedPath))
+      : undefined;
+    const references = persisted.references.map((reference) => ({
       ...reference,
       document: this.#restoreDocument(reference.document, requireEntry(entries, reference.document.storedPath))
     }));
-    return {
-      ...project,
+    const restored = {
+      ...persisted,
       ...(target ? { target } : {}),
       references
     };
+    assertProjectDefinition(restored);
+    return restored;
   }
 
   async saveTemplate(destination: string, project: ProjectDefinition, existing?: ChecklistTemplateDefinition): Promise<ChecklistTemplateDefinition> {

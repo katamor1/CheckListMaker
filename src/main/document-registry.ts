@@ -55,6 +55,10 @@ export class DocumentRegistry {
     return readFile(entry.sourcePath);
   }
 
+  has(token: string): boolean {
+    return this.#entries.has(token);
+  }
+
   clear(): void {
     this.#entries.clear();
   }
