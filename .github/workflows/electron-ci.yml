@@ -1,0 +1,40 @@
+name: Electron CI
+
+on:
+  push:
+    branches:
+      - agent/replatform-electron
+  pull_request:
+    paths:
+      - package.json
+      - tsconfig*.json
+      - vite.config.ts
+      - src/**
+      - scripts/**
+      - tests/**
+      - .github/workflows/electron-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Verify types, tests, and production build
+        shell: pwsh
+        run: npm run verify
