@@ -1,2 +1,15 @@
-# Auto detect text files and perform LF normalization
+# Auto-detect text files and normalize repository content.
 * text=auto
+
+# Sample manifests pin exact bytes, so Windows checkouts must preserve LF.
+samples/**/*.md text eol=lf
+samples/**/*.txt text eol=lf
+samples/**/*.json text eol=lf
+samples/**/*.py text eol=lf
+tests/sample_catalog/**/*.py text eol=lf
+
+# Office/PDF and CheckListMaker containers are always binary.
+*.docx binary
+*.pdf binary
+*.clmproj binary
+*.clmcheck binary
