@@ -178,6 +178,177 @@ describe('ProjectSessionManager', () => {
     expect(activeResources.store.saveProject).toHaveBeenCalledTimes(2);
   });
 
+  it('queues a child context resumed after its owner completes behind the current blocker', async () => {
+    const manager = new ProjectSessionManager(resources);
+    const resumeChild = deferred();
+    const blockerStarted = deferred();
+    const releaseBlocker = deferred();
+    const events: string[] = [];
+    let child!: Promise<string>;
+    await manager.runExclusive(() => {
+      events.push('owner:complete');
+      child = (async () => {
+        await resumeChild.promise;
+        return manager.runExclusive(() => {
+          events.push('child:complete');
+          return 'child result';
+        });
+      })();
+    });
+    const blocker = manager.runExclusive(async () => {
+      events.push('blocker:start');
+      blockerStarted.resolve();
+      await releaseBlocker.promise;
+      events.push('blocker:end');
+    });
+    await blockerStarted.promise;
+
+    resumeChild.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    const eventsBeforeBlockerRelease = [...events];
+    releaseBlocker.resolve();
+    const [childResult] = await completesWithin(Promise.all([child, blocker]));
+
+    expect(eventsBeforeBlockerRelease).toEqual(['owner:complete', 'blocker:start']);
+    expect(events).toEqual(['owner:complete', 'blocker:start', 'blocker:end', 'child:complete']);
+    expect(childResult).toBe('child result');
+  });
+
+  it('keeps manager B queued behind its blocker when called from manager A context', async () => {
+    const managerA = new ProjectSessionManager(resources);
+    const managerB = new ProjectSessionManager(resources);
+    const blockerStarted = deferred();
+    const releaseBlocker = deferred();
+    const events: string[] = [];
+    const blocker = managerB.runExclusive(async () => {
+      events.push('managerB:blocker:start');
+      blockerStarted.resolve();
+      await releaseBlocker.promise;
+      events.push('managerB:blocker:end');
+    });
+    await blockerStarted.promise;
+
+    const managerACall = managerA.runExclusive(async () => {
+      events.push('managerA:start');
+      const result = await managerB.runExclusive(() => {
+        events.push('managerB:operation');
+        return 'manager B result';
+      });
+      events.push('managerA:end');
+      return result;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const eventsBeforeBlockerRelease = [...events];
+    releaseBlocker.resolve();
+    const [, managerAResult] = await completesWithin(Promise.all([blocker, managerACall]));
+
+    expect(eventsBeforeBlockerRelease).toEqual(['managerB:blocker:start', 'managerA:start']);
+    expect(events).toEqual([
+      'managerB:blocker:start',
+      'managerA:start',
+      'managerB:blocker:end',
+      'managerB:operation',
+      'managerA:end'
+    ]);
+    expect(managerAResult).toBe('manager B result');
+  });
+
+  it('deactivates a child context after a synchronous owner throw and recovers the tail', async () => {
+    const manager = new ProjectSessionManager(resources);
+    const resumeChild = deferred();
+    const blockerStarted = deferred();
+    const releaseBlocker = deferred();
+    const events: string[] = [];
+    let child!: Promise<string>;
+    const throwingOwner = manager.runExclusive(() => {
+      events.push('owner:throw');
+      child = (async () => {
+        await resumeChild.promise;
+        return manager.runExclusive(() => {
+          events.push('child:complete');
+          return 'child recovered';
+        });
+      })();
+      throw new Error('expected owner failure');
+    });
+    await expect(throwingOwner).rejects.toThrow('expected owner failure');
+    const blocker = manager.runExclusive(async () => {
+      events.push('blocker:start');
+      blockerStarted.resolve();
+      await releaseBlocker.promise;
+      events.push('blocker:end');
+    });
+    await blockerStarted.promise;
+
+    resumeChild.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    const eventsBeforeBlockerRelease = [...events];
+    releaseBlocker.resolve();
+    const [childResult] = await completesWithin(Promise.all([child, blocker]));
+
+    expect(eventsBeforeBlockerRelease).toEqual(['owner:throw', 'blocker:start']);
+    expect(events).toEqual(['owner:throw', 'blocker:start', 'blocker:end', 'child:complete']);
+    expect(childResult).toBe('child recovered');
+    await expect(manager.runExclusive(() => 'tail recovered')).resolves.toBe('tail recovered');
+  });
+
+  it('awaits custom thenables once and recovers the queue after thenable rejection', async () => {
+    const manager = new ProjectSessionManager(resources);
+    const releaseResolution = deferred();
+    const events: string[] = [];
+    const resolvingThenCall = vi.fn();
+    const rejectingThenCall = vi.fn();
+    const resolvingOperation = vi.fn(() => ({
+      then(resolve: (value: string) => void): void {
+        resolvingThenCall();
+        events.push('resolve:wait');
+        void releaseResolution.promise.then(() => {
+          events.push('resolve:complete');
+          resolve('resolved thenable');
+        });
+      }
+    }));
+    const rejectingOperation = vi.fn(() => ({
+      then(_resolve: (value: never) => void, reject: (reason: unknown) => void): void {
+        rejectingThenCall();
+        events.push('reject:complete');
+        reject(new Error('expected thenable rejection'));
+      }
+    }));
+    const finalOperation = vi.fn(() => {
+      events.push('final:complete');
+      return 'queue recovered';
+    });
+
+    const resolving = manager.runExclusive(resolvingOperation);
+    const rejecting = manager.runExclusive(rejectingOperation);
+    const final = manager.runExclusive(finalOperation);
+    const rejection = expect(rejecting).rejects.toThrow('expected thenable rejection');
+    await vi.waitFor(() => expect(events).toEqual(['resolve:wait']));
+    expect(rejectingOperation).not.toHaveBeenCalled();
+    expect(finalOperation).not.toHaveBeenCalled();
+
+    releaseResolution.resolve();
+
+    await expect(resolving).resolves.toBe('resolved thenable');
+    await rejection;
+    await expect(final).resolves.toBe('queue recovered');
+    expect(events).toEqual([
+      'resolve:wait',
+      'resolve:complete',
+      'reject:complete',
+      'final:complete'
+    ]);
+    expect(resolvingOperation).toHaveBeenCalledOnce();
+    expect(rejectingOperation).toHaveBeenCalledOnce();
+    expect(finalOperation).toHaveBeenCalledOnce();
+    expect(resolvingThenCall).toHaveBeenCalledOnce();
+    expect(rejectingThenCall).toHaveBeenCalledOnce();
+  });
+
   it('routes public saves through the same exclusive session queue', async () => {
     const activeResources = resources();
     const manager = new ProjectSessionManager(() => activeResources);
