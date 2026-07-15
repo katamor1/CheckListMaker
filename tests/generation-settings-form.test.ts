@@ -1,8 +1,10 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { createProject } from '../src/shared/defaults.js';
 import type { DocumentGenerationDefinition } from '../src/shared/model.js';
 import { GenerationSettingsForm, applyGenerationPatch } from '../src/renderer/GenerationSettingsForm.js';
+import { validateProject } from '../src/shared/validation.js';
 
 const generation: DocumentGenerationDefinition = {
   title: 'リリース計画書',
@@ -44,5 +46,14 @@ describe('GenerationSettingsForm', () => {
 
     expect(updated).toEqual({ ...generation, purpose: '承認を得る' });
     expect(generation.purpose).toBe('関係者の合意を得る');
+  });
+
+  it('文書生成指示を入力すると新規生成プロジェクトの事前検査を通過できる', () => {
+    const project = createProject('document_generation');
+    const generation = applyGenerationPatch(project.generation!, {
+      instructions: '背景、目的、日程、リスクを含む計画書を作成する'
+    });
+    const issues = validateProject({ ...project, generation });
+    expect(issues).toEqual([]);
   });
 });

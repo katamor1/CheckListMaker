@@ -163,11 +163,6 @@ export interface ExportResult {
   sizeBytes?: number;
 }
 
-export interface OpenResult {
-  canceled: boolean;
-  summary?: ProjectSummary;
-}
-
 export interface SaveResult {
   canceled: boolean;
   path?: string;
@@ -197,14 +192,18 @@ export interface SelectedReferenceInput {
 }
 
 export interface AppBridge {
-  newProject(mode: ProjectMode): Promise<ProjectSummary>;
-  openProject(): Promise<OpenResult>;
-  saveProject(project: ProjectDefinition, saveAs?: boolean): Promise<SaveResult>;
-  selectTarget(): Promise<SelectedDocument | null>;
+  newProject(mode: ProjectMode): Promise<SessionChangeResult>;
+  openProject(): Promise<SessionChangeResult>;
+  updateProject(project: ProjectDefinition, revision: number): Promise<DraftUpdateResult>;
+  saveProject(saveAs?: boolean): Promise<SessionSaveResult>;
+  selectTarget(): Promise<SessionSnapshot | null>;
   selectReferences(): Promise<SelectedDocument[]>;
-  exportPackage(project: ProjectDefinition): Promise<ExportResult>;
-  validateProject(project: ProjectDefinition): Promise<ValidationIssue[]>;
-  saveTemplate(project: ProjectDefinition): Promise<SaveResult>;
+  exportPackage(): Promise<ExportResult>;
+  validateProject(): Promise<ValidationIssue[]>;
+  onFlushBeforeClose(listener: (requestId: string) => void): () => void;
+  onCloseCanceled(listener: (requestId: string) => void): () => void;
+  closeReady(requestId: string): Promise<void>;
+  saveTemplate(): Promise<SaveResult>;
   openTemplate(): Promise<ChecklistTemplateDefinition | null>;
   openFolder(path: string): Promise<void>;
   getVersions(): Promise<{ application: string; electron: string; node: string; chrome: string }>;
