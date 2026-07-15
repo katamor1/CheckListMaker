@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 
 from samples.validate_samples import (
+    ValidationIssue,
+    _report,
     hash_and_size,
     load_json,
     main,
@@ -135,6 +137,28 @@ class ValidatorCoreTests(unittest.TestCase):
         self.assertEqual(
             ["JSON_INVALID"],
             [issue.code for issue in report.issues])
+
+    def test_oversized_json_integer_is_reported_as_invalid(self):
+        oversized_integer = "9" * 10_000
+        root = self.make_repo(
+            catalog_text=f"[{oversized_integer}]\n")
+
+        report = validate_catalog(root)
+
+        self.assertEqual(1, report.exit_code)
+        self.assertEqual(
+            ["JSON_INVALID"],
+            [issue.code for issue in report.issues])
+
+    def test_valid_json_integers_remain_supported(self):
+        root = self.make_empty_root()
+        path = root / "integers.json"
+        self.write_text(path, "[-123, 0, 456]\n")
+
+        value, issues = load_json(path, "integers.json")
+
+        self.assertEqual([-123, 0, 456], value)
+        self.assertEqual((), issues)
 
     def test_parent_traversal_manifest_path_is_rejected(self):
         root = self.make_repo(catalog=[{
@@ -285,13 +309,24 @@ class ValidatorCoreTests(unittest.TestCase):
                 self.assertNotIn(str(root), issues[0].message)
 
     def test_report_and_cli_errors_are_sorted_and_sanitized(self):
+        collected_issues = (
+            ValidationIssue("A_CODE", "z/location", "a message"),
+            ValidationIssue("B_CODE", "a/location", "a message"),
+            ValidationIssue("A_CODE", "a/location", "z message"),
+            ValidationIssue("A_CODE", "a/location", "a message"),
+        )
+        sort_key = lambda issue: (issue.location, issue.code, issue.message)
+        expected_issues = tuple(sorted(collected_issues, key=sort_key))
+        self.assertEqual(tuple(reversed(expected_issues)), collected_issues)
+
+        report = _report(collected_issues, sample_count=0, file_count=0)
+
+        self.assertEqual(expected_issues, report.issues)
+
         root = self.make_repo(catalog=[
             self.catalog_entry("samples/NUL/file.json", "sample-b"),
             self.catalog_entry("../outside.json", "sample-a"),
         ])
-        report = validate_catalog(root)
-        sort_key = lambda issue: (issue.location, issue.code, issue.message)
-        self.assertEqual(tuple(sorted(report.issues, key=sort_key)), report.issues)
 
         stdout = io.StringIO()
         stderr = io.StringIO()

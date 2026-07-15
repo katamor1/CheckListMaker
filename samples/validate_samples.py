@@ -51,6 +51,10 @@ class _NonStandardConstantError(ValueError):
     """Raised when JSON contains NaN or an infinity value."""
 
 
+class _JsonIntegerLimitError(ValueError):
+    """Raised when a JSON integer exceeds Python's conversion limit."""
+
+
 def _reject_duplicate_keys(pairs: Sequence[Tuple[str, Any]]) -> Dict[str, Any]:
     value: Dict[str, Any] = {}
     for key, item in pairs:
@@ -64,6 +68,13 @@ def _reject_non_standard_constant(_value: str) -> Any:
     raise _NonStandardConstantError
 
 
+def _parse_json_integer(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError:
+        raise _JsonIntegerLimitError from None
+
+
 def load_json(
         path: Path,
         location: str,
@@ -75,6 +86,7 @@ def load_json(
                 stream,
                 object_pairs_hook=_reject_duplicate_keys,
                 parse_constant=_reject_non_standard_constant,
+                parse_int=_parse_json_integer,
             ), ()
     except _DuplicateKeyError:
         return None, (
@@ -85,6 +97,7 @@ def load_json(
             ),
         )
     except (
+            _JsonIntegerLimitError,
             _NonStandardConstantError,
             json.JSONDecodeError,
             UnicodeDecodeError,
