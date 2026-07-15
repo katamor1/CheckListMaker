@@ -257,6 +257,38 @@ describe('CloseCoordinator', () => {
     }
   });
 
+  it('clears a timed-out request before retry and keeps its late acknowledgement isolated', async () => {
+    vi.useFakeTimers();
+    let request = 0;
+    const coordinator = new CloseCoordinator(() => `REQ-TIMEOUT-CLEANUP-${++request}`);
+    const timedOut = coordinator.requestFlush(() => undefined, 100);
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(timedOut).resolves.toBe(false);
+
+    try {
+      coordinator.acknowledge('REQ-TIMEOUT-CLEANUP-1');
+      expect(coordinator.isGuarding).toBe(false);
+      expect(coordinator.closeApproved).toBe(false);
+
+      const retry = coordinator.requestFlush(() => undefined, 1000);
+      let retrySettled = false;
+      void retry.then(() => {
+        retrySettled = true;
+      });
+
+      coordinator.acknowledge('REQ-TIMEOUT-CLEANUP-1');
+      await Promise.resolve();
+      expect(retrySettled).toBe(false);
+      expect(coordinator.isGuarding).toBe(true);
+      expect(coordinator.closeApproved).toBe(false);
+
+      coordinator.acknowledge('REQ-TIMEOUT-CLEANUP-2');
+      await expect(retry).resolves.toBe(true);
+    } finally {
+      coordinator.abortClose();
+    }
+  });
+
   it('aborts a pending flush as false and cleans up before retry', async () => {
     vi.useFakeTimers();
     let request = 0;
