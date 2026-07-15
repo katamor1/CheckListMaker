@@ -47,6 +47,10 @@ class _DuplicateKeyError(ValueError):
     """Raised when a JSON object repeats a property name."""
 
 
+class _NonStandardConstantError(ValueError):
+    """Raised when JSON contains NaN or an infinity value."""
+
+
 def _reject_duplicate_keys(pairs: Sequence[Tuple[str, Any]]) -> Dict[str, Any]:
     value: Dict[str, Any] = {}
     for key, item in pairs:
@@ -56,6 +60,10 @@ def _reject_duplicate_keys(pairs: Sequence[Tuple[str, Any]]) -> Dict[str, Any]:
     return value
 
 
+def _reject_non_standard_constant(_value: str) -> Any:
+    raise _NonStandardConstantError
+
+
 def load_json(
         path: Path,
         location: str,
@@ -63,7 +71,11 @@ def load_json(
     """Load UTF-8 JSON without allowing duplicate object keys."""
     try:
         with path.open("r", encoding="utf-8") as stream:
-            return json.load(stream, object_pairs_hook=_reject_duplicate_keys), ()
+            return json.load(
+                stream,
+                object_pairs_hook=_reject_duplicate_keys,
+                parse_constant=_reject_non_standard_constant,
+            ), ()
     except _DuplicateKeyError:
         return None, (
             ValidationIssue(
@@ -72,7 +84,14 @@ def load_json(
                 "duplicate JSON object key",
             ),
         )
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (
+            _NonStandardConstantError,
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+            RecursionError,
+            OverflowError,
+            MemoryError,
+    ):
         return None, (
             ValidationIssue(
                 "JSON_INVALID",
