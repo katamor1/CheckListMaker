@@ -54,6 +54,5 @@ export class SessionOperationQueue {
   dispose(): void {
     this.#closes.clear();
     this.#tokens.clear();
-    this.onBlockedChange = () => undefined;
   }
 }

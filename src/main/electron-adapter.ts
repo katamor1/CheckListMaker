@@ -100,6 +100,28 @@ export interface WindowCloseGuardOptions<TCoordinator extends CloseCoordinatorAd
 export const wireWindowCloseGuard = <TCoordinator extends CloseCoordinatorAdapter>(
   options: WindowCloseGuardOptions<TCoordinator>
 ): void => {
+  const reportBestEffort = (error: unknown): void => {
+    try {
+      options.reportUnexpected(error);
+    } catch {
+      // Reporting is terminal best-effort work at the native close boundary.
+    }
+  };
+  const sendBestEffort = (channel: string, requestId: string): void => {
+    try {
+      options.send(channel, requestId);
+    } catch (error) {
+      reportBestEffort(error);
+    }
+  };
+  const showErrorBestEffort = async (message: string): Promise<void> => {
+    try {
+      await options.showError(message);
+    } catch (error) {
+      reportBestEffort(error);
+    }
+  };
+
   options.coordinators.set(options.senderId, options.coordinator);
   options.onClosed(() => {
     options.coordinators.delete(options.senderId);
@@ -132,11 +154,11 @@ export const wireWindowCloseGuard = <TCoordinator extends CloseCoordinatorAdapte
       }
     }).catch(async (error: unknown) => {
       options.coordinator.abortClose();
+      reportBestEffort(error);
       if (requestId && !options.isDestroyed()) {
-        options.send(IPC.closeCanceled, requestId);
+        sendBestEffort(IPC.closeCanceled, requestId);
       }
-      options.reportUnexpected(error);
-      if (!options.isDestroyed()) await options.showError(options.genericMessage);
+      if (!options.isDestroyed()) await showErrorBestEffort(options.genericMessage);
     });
   });
 };

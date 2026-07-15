@@ -185,16 +185,75 @@ describe('RendererSessionOrchestrator', () => {
     await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith(failure));
     expect(bridge.bridge.closeReady).not.toHaveBeenCalled();
   });
+
+  it('keeps the busy barrier reusable after StrictMode setup-cleanup-setup replay', async () => {
+    const bridge = createBridge();
+    const blockedChanges: boolean[] = [];
+    const queue = new SessionOperationQueue((blocked) => blockedChanges.push(blocked));
+    const orchestrator = new RendererSessionOrchestrator({
+      bridge: bridge.bridge,
+      summaryRef: { current: snapshot() },
+      synchronizer: {
+        enqueue: vi.fn(),
+        reset: vi.fn(),
+        flush: vi.fn().mockResolvedValue(undefined)
+      },
+      operationQueue: queue,
+      publishSummary: vi.fn(),
+      reportError: vi.fn()
+    });
+
+    const firstCleanup = orchestrator.subscribeClose();
+    firstCleanup();
+    firstCleanup();
+    expect(bridge.unsubscribeFlush).toHaveBeenCalledOnce();
+    expect(bridge.unsubscribeCanceled).toHaveBeenCalledOnce();
+
+    const secondCleanup = orchestrator.subscribeClose();
+    const operation = orchestrator.runSessionOperation(async () => 'complete');
+    expect(queue.blocked).toBe(true);
+    expect(blockedChanges).toEqual([true]);
+    await expect(operation).resolves.toBe('complete');
+    expect(queue.blocked).toBe(false);
+    expect(blockedChanges).toEqual([true, false]);
+
+    secondCleanup();
+    expect(bridge.unsubscribeFlush).toHaveBeenCalledTimes(2);
+    expect(bridge.unsubscribeCanceled).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('safeRendererErrorMessage', () => {
-  it('keeps fixed user messages and rejects raw paths, stacks, and IPC channels', () => {
-    expect(safeRendererErrorMessage(new Error('文書を登録できませんでした。ファイルを確認してください。')))
-      .toBe('文書を登録できませんでした。ファイルを確認してください。');
-    expect(safeRendererErrorMessage(new Error(
-      "Error invoking remote method 'project:save': C:\\secret\\customer.clmproj\n    at stack"
-    ))).toBe('処理に失敗しました。再度お試しください。');
-    expect(safeRendererErrorMessage({ message: 'C:\\secret\\plain object' }))
-      .toBe('処理に失敗しました。再度お試しください。');
+  it('keeps only a branded error whose code and fixed message are allowlisted', () => {
+    const trusted = new Error(
+      'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+    );
+    trusted.name = 'CheckListMakerUserFacingError:PROJECT_SAVE_FAILED';
+
+    expect(safeRendererErrorMessage(trusted)).toBe(
+      'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+    );
+
+    const mismatched = new Error('Cannot read properties of undefined');
+    mismatched.name = 'CheckListMakerUserFacingError:PROJECT_SAVE_FAILED';
+    expect(safeRendererErrorMessage(mismatched)).toBe('処理に失敗しました。再度お試しください。');
+  });
+
+  it('genericizes every untrusted Error message and every non-Error value', () => {
+    const untrusted: unknown[] = [
+      new Error('文書を登録できませんでした。ファイルを確認してください。'),
+      new Error('\\\\server\\share\\customer.clmproj'),
+      new Error('/etc/customer.conf'),
+      new Error('unknown-ipc:private-action'),
+      new TypeError('Cannot read properties of undefined'),
+      new Error('operation failed\n    at internal stack'),
+      { message: '文書を登録できませんでした。ファイルを確認してください。' },
+      '文書を登録できませんでした。ファイルを確認してください。',
+      null
+    ];
+
+    for (const error of untrusted) {
+      expect(safeRendererErrorMessage(error)).toBe('処理に失敗しました。再度お試しください。');
+    }
   });
 });

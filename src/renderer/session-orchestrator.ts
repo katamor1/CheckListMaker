@@ -1,4 +1,8 @@
-import { GENERIC_USER_MESSAGE } from '../shared/ipc-result.js';
+import {
+  GENERIC_USER_MESSAGE,
+  RENDERER_USER_ERROR_NAME_PREFIX,
+  isSafeUserMessage
+} from '../shared/ipc-result.js';
 import type {
   AppBridge,
   ProjectDefinition,
@@ -38,13 +42,28 @@ export interface RendererSessionOrchestratorOptions {
   reportError(error: unknown): void;
 }
 
-const UNSAFE_ERROR_TEXT = /Error invoking remote method|[A-Za-z]:[\\/]|(?:^|\n)\s*at\s+|\b(?:project|session|document|package|template|shell|app):[a-z0-9-]+\b|(?:^|[\s(])\/(?:Users|home|tmp|var|private|mnt)\//i;
+export const RENDERER_ERROR_BRAND = 'checklistmaker.renderer-user-error.v1' as const;
+
+export const normalizeRendererError = (error: unknown): unknown => {
+  if (!error || typeof error !== 'object') return error;
+  const candidate = error as { brand?: unknown; code?: unknown; message?: unknown };
+  if (
+    candidate.brand !== RENDERER_ERROR_BRAND ||
+    typeof candidate.code !== 'string' ||
+    typeof candidate.message !== 'string' ||
+    !isSafeUserMessage(candidate.code, candidate.message)
+  ) return error;
+  const trusted = new Error(candidate.message);
+  trusted.name = `${RENDERER_USER_ERROR_NAME_PREFIX}${candidate.code}`;
+  return trusted;
+};
 
 export const safeRendererErrorMessage = (error: unknown): string => {
-  if (!(error instanceof Error) || UNSAFE_ERROR_TEXT.test(error.message)) {
+  if (!(error instanceof Error) || !error.name.startsWith(RENDERER_USER_ERROR_NAME_PREFIX)) {
     return GENERIC_USER_MESSAGE;
   }
-  return error.message;
+  const code = error.name.slice(RENDERER_USER_ERROR_NAME_PREFIX.length);
+  return isSafeUserMessage(code, error.message) ? error.message : GENERIC_USER_MESSAGE;
 };
 
 export class RendererSessionOrchestrator {
@@ -97,7 +116,10 @@ export class RendererSessionOrchestrator {
     const unsubscribeCanceled = this.options.bridge.onCloseCanceled((requestId) => {
       this.options.operationQueue.cancelClose(requestId);
     });
+    let cleanedUp = false;
     return () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
       unsubscribeFlush();
       unsubscribeCanceled();
       this.options.operationQueue.dispose();

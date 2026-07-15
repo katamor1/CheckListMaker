@@ -12,7 +12,7 @@ import { stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC } from '../shared/ipc.js';
-import { GENERIC_USER_MESSAGE, runIpcOperation, UserFacingError } from '../shared/ipc-result.js';
+import { GENERIC_USER_MESSAGE, UserFacingError } from '../shared/ipc-result.js';
 import { APPLICATION_VERSION } from '../shared/model.js';
 import type { SelectedDocument } from '../shared/model.js';
 import {
@@ -20,15 +20,12 @@ import {
   coordinateClose
 } from './close-coordinator.js';
 import { DocumentRegistry } from './document-registry.js';
-import {
-  registerElectronIpc,
-  wireWindowCloseGuard
-} from './electron-adapter.js';
+import { wireWindowCloseGuard } from './electron-adapter.js';
+import { registerMainIpcBindings } from './main-ipc-bindings.js';
 import { ProjectSessionManager } from './project-session.js';
 import { ProjectSessionController, type SessionControllerPorts } from './session-controller.js';
 import {
   createSessionHandlers,
-  SESSION_INVOKE_CHANNELS,
   type SessionHandlerDependencies
 } from './session-handlers.js';
 import {
@@ -167,42 +164,25 @@ const createHandlerDependencies = (owner: BrowserWindow): SessionHandlerDependen
 });
 
 const registerIpc = (): void => {
-  registerElectronIpc({
-    allChannels: Object.values(IPC),
-    sessionChannels: SESSION_INVOKE_CHANNELS,
-    directHandlers: [
-      {
-        channel: IPC.openFolder,
-        operation: async (_event: IpcMainInvokeEvent, rawPath: unknown) => {
-          if (typeof rawPath !== 'string') {
-            throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
-          }
-          if (!allowedOutputPaths.has(rawPath)) {
-            throw new UserFacingError('OUTPUT_NOT_ALLOWED', 'この場所を開く権限がありません。');
-          }
-          shell.showItemInFolder(rawPath);
-        }
-      },
-      {
-        channel: IPC.versions,
-        operation: () => ({
-          application: APPLICATION_VERSION,
-          electron: process.versions.electron,
-          node: process.versions.node,
-          chrome: process.versions.chrome
-        })
-      }
-    ],
+  registerMainIpcBindings({
     removeHandler: (channel) => ipcMain.removeHandler(channel),
-    installHandler: (channel, listener) => {
+    installHandler: (
+      channel,
+      listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
+    ) => {
       ipcMain.handle(channel, listener);
     },
-    runSafely: (operation) => runIpcOperation(operation, (error) => console.error(error)),
     resolveOwner: (sender) => BrowserWindow.fromWebContents(sender) ?? undefined,
     handlersFor: (owner) => createSessionHandlers(createHandlerDependencies(owner)),
-    ownerUnavailable: () => {
-      throw new UserFacingError('WINDOW_UNAVAILABLE', GENERIC_USER_MESSAGE);
-    }
+    allowedOutputPaths,
+    showItemInFolder: (path) => shell.showItemInFolder(path),
+    versions: () => ({
+      application: APPLICATION_VERSION,
+      electron: process.versions.electron,
+      node: process.versions.node,
+      chrome: process.versions.chrome
+    }),
+    reportUnexpected: (error) => console.error(error)
   });
 };
 

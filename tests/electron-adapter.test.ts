@@ -122,7 +122,11 @@ describe('registerElectronIpc', () => {
 
     await expect(installed.get(IPC.openProject)!({ sender: { id: 99 } })).resolves.toEqual({
       ok: false,
-      error: { code: 'WINDOW_UNAVAILABLE', message: '処理に失敗しました。再度お試しください。' }
+      error: {
+        brand: 'checklistmaker.user-facing-error.v1',
+        code: 'WINDOW_UNAVAILABLE',
+        message: '処理に失敗しました。再度お試しください。'
+      }
     });
   });
 });
@@ -237,5 +241,55 @@ describe('wireWindowCloseGuard', () => {
     expect(failed.coordinator.abortClose).toHaveBeenCalledOnce();
     expect(failed.send).toHaveBeenNthCalledWith(2, IPC.closeCanceled, 'REQ-FAIL');
     expect(failed.reportUnexpected).toHaveBeenCalledWith(cause);
+  });
+
+  it('contains and reports a secondary close-cancel send failure', async () => {
+    const fixture = createFixture('canceled');
+    const coordinationFailure = new Error('coordination failed');
+    const sendFailure = new Error('cancel send failed');
+    fixture.coordinate.mockImplementation(async (_coordinator, sendFlush) => {
+      sendFlush('REQ-SEND-FAIL');
+      throw coordinationFailure;
+    });
+    fixture.send.mockImplementation((channel) => {
+      if (channel === IPC.closeCanceled) throw sendFailure;
+    });
+    const unhandled: unknown[] = [];
+    const observeUnhandled = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', observeUnhandled);
+    try {
+      fixture.closeListener()(fixture.closeEvent);
+      await vi.waitFor(() => expect(fixture.reportUnexpected).toHaveBeenCalledWith(sendFailure));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fixture.reportUnexpected).toHaveBeenCalledWith(coordinationFailure);
+      expect(fixture.showError).toHaveBeenCalledWith('generic failure');
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', observeUnhandled);
+    }
+  });
+
+  it('contains and reports a secondary close error-dialog rejection', async () => {
+    const fixture = createFixture('canceled');
+    const coordinationFailure = new Error('coordination failed');
+    const dialogFailure = new Error('dialog rejected');
+    fixture.coordinate.mockImplementation(async (_coordinator, sendFlush) => {
+      sendFlush('REQ-DIALOG-FAIL');
+      throw coordinationFailure;
+    });
+    fixture.showError.mockRejectedValue(dialogFailure);
+    const unhandled: unknown[] = [];
+    const observeUnhandled = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', observeUnhandled);
+    try {
+      fixture.closeListener()(fixture.closeEvent);
+      await vi.waitFor(() => expect(fixture.reportUnexpected).toHaveBeenCalledWith(dialogFailure));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fixture.reportUnexpected).toHaveBeenCalledWith(coordinationFailure);
+      expect(fixture.send).toHaveBeenNthCalledWith(2, IPC.closeCanceled, 'REQ-DIALOG-FAIL');
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', observeUnhandled);
+    }
   });
 });

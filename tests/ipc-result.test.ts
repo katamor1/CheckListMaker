@@ -13,13 +13,39 @@ describe('IPC result boundary', () => {
 
   it('preserves only an explicitly user-facing error', async () => {
     const result = await runIpcOperation(async () => {
-      throw new UserFacingError('PROJECT_INVALID', '保存できません: 入力を確認してください。');
+      throw new UserFacingError(
+        'PROJECT_SAVE_FAILED',
+        'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+      );
     });
 
     expect(result).toEqual({
       ok: false,
-      error: { code: 'PROJECT_INVALID', message: '保存できません: 入力を確認してください。' }
+      error: {
+        brand: 'checklistmaker.user-facing-error.v1',
+        code: 'PROJECT_SAVE_FAILED',
+        message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+      }
     });
+  });
+
+  it('genericizes even a UserFacingError when its code and message are not allowlisted', async () => {
+    const reportUnexpected = vi.fn();
+    const unsafe = new UserFacingError(
+      'PROJECT_SAVE_FAILED',
+      'Cannot read properties of undefined at C:\\secret\\project.clmproj'
+    );
+
+    const result = await runIpcOperation(async () => {
+      throw unsafe;
+    }, reportUnexpected);
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR', message: GENERIC_USER_MESSAGE }
+    });
+    expect(JSON.stringify(result)).not.toContain('Cannot read properties');
+    expect(reportUnexpected).toHaveBeenCalledWith(unsafe);
   });
 
   it('logs a hidden cause without returning it to the Renderer', async () => {
@@ -36,6 +62,7 @@ describe('IPC result boundary', () => {
     expect(result).toEqual({
       ok: false,
       error: {
+        brand: 'checklistmaker.user-facing-error.v1',
         code: 'PROJECT_SAVE_FAILED',
         message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
       }

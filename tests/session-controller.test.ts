@@ -239,6 +239,7 @@ describe('ProjectSessionController', () => {
     expect(openResult).toEqual({
       ok: false,
       error: {
+        brand: 'checklistmaker.user-facing-error.v1',
         code: 'PROJECT_OPEN_FAILED',
         message: 'プロジェクトを開けませんでした。ファイルが破損しているか、対応していない形式です。'
       }

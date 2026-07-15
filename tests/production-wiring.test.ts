@@ -5,8 +5,9 @@ describe('Task 5 production wiring', () => {
   it('routes Main IPC and window close through the tested Electron adapter', async () => {
     const source = await readFile(new URL('../src/main/main.ts', import.meta.url), 'utf8');
 
-    expect(source).toContain("from './electron-adapter.js'");
-    expect(source).toContain('registerElectronIpc({');
+    expect(source).toContain("from './main-ipc-bindings.js'");
+    expect(source).toContain('registerMainIpcBindings({');
+    expect(source).not.toContain('registerElectronIpc({');
     expect(source).toContain('wireWindowCloseGuard({');
     expect(source.match(/ipcMain\.handle/g)).toHaveLength(1);
   });
@@ -15,6 +16,7 @@ describe('Task 5 production wiring', () => {
     const source = await readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain("from './session-orchestrator.js'");
+    expect(source).toContain('normalizeRendererError');
     expect(source).toContain('new RendererSessionOrchestrator({');
     expect(source).toContain('orchestrator.runSessionOperation(');
     expect(source).toContain('orchestrator.commitProject(');

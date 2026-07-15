@@ -11,6 +11,7 @@ import { saveThenExport } from './session-actions.js';
 import { SessionOperationQueue } from './session-operation-queue.js';
 import {
   RendererSessionOrchestrator,
+  normalizeRendererError,
   safeRendererErrorMessage
 } from './session-orchestrator.js';
 
@@ -54,7 +55,7 @@ export const App = () => {
       synchronizer,
       operationQueue,
       publishSummary: setSummary,
-      reportError: (error) => setNotice(safeRendererErrorMessage(error))
+      reportError: (error) => setNotice(safeRendererErrorMessage(normalizeRendererError(error)))
     });
   }
   const orchestrator = orchestratorRef.current;
@@ -63,7 +64,9 @@ export const App = () => {
     void window.checklistMaker
       .getVersions()
       .then(setVersions)
-      .catch((error: unknown) => setNotice(safeRendererErrorMessage(error)));
+      .catch((error: unknown) => setNotice(
+        safeRendererErrorMessage(normalizeRendererError(error))
+      ));
   }, []);
 
   useEffect(() => orchestrator.subscribeClose(), [orchestrator]);
