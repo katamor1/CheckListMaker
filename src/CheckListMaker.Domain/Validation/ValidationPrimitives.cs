@@ -17,7 +17,7 @@ public sealed record ValidationResult
 public static partial class IdentifierRules
 {
     [GeneratedRegex("^CHK-[0-9]{4}$", RegexOptions.CultureInvariant)] private static partial Regex CheckItemRegex();
-    [GeneratedRegex("^COND-[0-9]{4}$", RegexOptions.CultureInvariant)] private static partial Regex ConditionRegex();
+    [GeneratedRegex("^COND-[0-9]{4}\\z", RegexOptions.CultureInvariant)] private static partial Regex ConditionRegex();
     [GeneratedRegex("^REF-[0-9]{3}$", RegexOptions.CultureInvariant)] private static partial Regex ReferenceRegex();
     public static bool IsCheckItemId(string? value) => value is not null && CheckItemRegex().IsMatch(value);
     public static bool IsConditionId(string? value) => value is not null && ConditionRegex().IsMatch(value);

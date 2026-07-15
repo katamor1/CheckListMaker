@@ -12,6 +12,7 @@ public sealed class IdentifierRulesTests
     [DataRow("COND-01", false)]
     [DataRow("COND-001", false)]
     [DataRow("COND-00001", false)]
+    [DataRow("COND-0001\n", false)]
     [DataRow("cond-0001", false)]
     [DataRow("", false)]
     public void IsConditionId_RequiresCondPrefixAndFourDigits(
