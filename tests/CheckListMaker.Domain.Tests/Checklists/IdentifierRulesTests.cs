@@ -6,7 +6,7 @@ namespace CheckListMaker.Domain.Tests.Checklists;
 [TestClass]
 public sealed class IdentifierRulesTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("COND-0001", true)]
     [DataRow("COND-9999", true)]
     [DataRow("COND-01", false)]
@@ -15,7 +15,7 @@ public sealed class IdentifierRulesTests
     [DataRow("COND-0001\n", false)]
     [DataRow("cond-0001", false)]
     [DataRow("", false)]
-    public void IsConditionId_RequiresCondPrefixAndFourDigits(
+    public void IsConditionIdRequiresCondPrefixAndFourDigits(
         string value,
         bool expected)
     {
@@ -23,7 +23,7 @@ public sealed class IdentifierRulesTests
     }
 
     [TestMethod]
-    public void IsConditionId_NullIsInvalid()
+    public void IsConditionIdNullIsInvalid()
     {
         Assert.IsFalse(IdentifierRules.IsConditionId(null));
     }

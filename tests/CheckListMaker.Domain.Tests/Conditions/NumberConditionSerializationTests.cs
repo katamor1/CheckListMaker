@@ -13,7 +13,7 @@ public sealed class NumberConditionSerializationTests
         DomainJson.CreateOptions();
 
     [TestMethod]
-    public void DecimalValues_AreWrittenAsNormalizedStrings()
+    public void DecimalValuesAreWrittenAsNormalizedStrings()
     {
         var condition = new NumberCondition
         {
@@ -33,7 +33,7 @@ public sealed class NumberConditionSerializationTests
     }
 
     [TestMethod]
-    public void DecimalValues_ReadNormalizedStrings()
+    public void DecimalValuesReadNormalizedStrings()
     {
         const string json =
             "{\"id\":\"COND-0001\",\"scope\":{\"type\":\"entire_document\"}," +
@@ -47,11 +47,11 @@ public sealed class NumberConditionSerializationTests
         Assert.AreEqual(250m, condition.Value);
     }
 
-    [DataTestMethod]
+    [TestMethod]
     [DataRow("{\"value\":250}")]
     [DataRow("{\"value\":\"0250\"}")]
     [DataRow("{\"value\":\"250.0\"}")]
-    public void DecimalValues_RejectNumbersAndNonCanonicalStrings(
+    public void DecimalValuesRejectNumbersAndNonCanonicalStrings(
         string valueFragment)
     {
         string json =
@@ -59,7 +59,7 @@ public sealed class NumberConditionSerializationTests
             "\"subject\":\"監視周期\",\"operator\":\"equal\"," +
             valueFragment[1..^1] + "}";
 
-        Assert.ThrowsException<JsonException>(
+        Assert.ThrowsExactly<JsonException>(
             () => JsonSerializer.Deserialize<NumberCondition>(json, Options));
     }
 }
