@@ -67,8 +67,8 @@
       "path": "README.md",
       "purpose": "documentation",
       "mediaType": "text/markdown",
-      "sha256": "d370aa2a5e52eb4b320d2b0d8b416fcfbfc2ff51725995bce4ac9d9c8afcce62",
-      "sizeBytes": 4841
+      "sha256": "2cb7a4150c378cd35146731b3a587c5d32ceffb117325d7c46a30d81e4972793",
+      "sizeBytes": 5288
     },
     {
       "path": "references/basic-design-template.md",
