@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IPC } from '../src/shared/ipc.js';
-import { ipcSuccess, runIpcOperation, UserFacingError } from '../src/shared/ipc-result.js';
+import {
+  GENERIC_USER_PRESENTATION,
+  ipcSuccess,
+  runIpcOperation,
+  UserFacingError
+} from '../src/shared/ipc-result.js';
 import { SESSION_INVOKE_CHANNELS, type SessionHandlerMap } from '../src/main/session-handlers.js';
 import {
   registerElectronIpc,
@@ -46,7 +51,7 @@ describe('registerElectronIpc', () => {
       resolveOwner,
       handlersFor,
       ownerUnavailable: () => {
-        throw new UserFacingError('WINDOW_UNAVAILABLE', '処理に失敗しました。再度お試しください。');
+        throw new UserFacingError('WINDOW_UNAVAILABLE', GENERIC_USER_PRESENTATION);
       }
     });
 
@@ -116,7 +121,7 @@ describe('registerElectronIpc', () => {
       resolveOwner: vi.fn(() => undefined),
       handlersFor: vi.fn(),
       ownerUnavailable: () => {
-        throw new UserFacingError('WINDOW_UNAVAILABLE', '処理に失敗しました。再度お試しください。');
+        throw new UserFacingError('WINDOW_UNAVAILABLE', GENERIC_USER_PRESENTATION);
       }
     });
 
@@ -125,7 +130,7 @@ describe('registerElectronIpc', () => {
       error: {
         brand: 'checklistmaker.user-facing-error.v1',
         code: 'WINDOW_UNAVAILABLE',
-        message: '処理に失敗しました。再度お試しください。'
+        presentation: GENERIC_USER_PRESENTATION
       }
     });
   });

@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createProject } from '../src/shared/defaults.js';
 import type { SessionSnapshot } from '../src/shared/model.js';
+import { GENERIC_USER_PRESENTATION } from '../src/shared/ipc-result.js';
+import { userFacingErrors } from '../src/shared/presentation/ja/index.js';
 import { DraftSynchronizer } from '../src/renderer/draft-synchronizer.js';
 import { SessionOperationQueue } from '../src/renderer/session-operation-queue.js';
 import {
   RendererSessionOrchestrator,
-  safeRendererErrorMessage
+  safeRendererError
 } from '../src/renderer/session-orchestrator.js';
 
 const deferred = <T = void>() => {
@@ -299,20 +301,32 @@ describe('RendererSessionOrchestrator', () => {
   });
 });
 
-describe('safeRendererErrorMessage', () => {
-  it('keeps only a branded error whose code and fixed message are allowlisted', () => {
-    const trusted = new Error(
-      'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
-    );
-    trusted.name = 'CheckListMakerUserFacingError:PROJECT_SAVE_FAILED';
+describe('safeRendererError', () => {
+  it('keeps only a branded structured presentation with an approved code', () => {
+    const trusted = {
+      brand: 'checklistmaker.renderer-user-error.v1',
+      code: 'PROJECT_SAVE_FAILED',
+      presentation: userFacingErrors.projectSaveFailed
+    };
 
-    expect(safeRendererErrorMessage(trusted)).toBe(
-      'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
-    );
+    expect(safeRendererError(trusted)).toEqual({
+      code: 'PROJECT_SAVE_FAILED',
+      presentation: userFacingErrors.projectSaveFailed
+    });
 
-    const mismatched = new Error('Cannot read properties of undefined');
-    mismatched.name = 'CheckListMakerUserFacingError:PROJECT_SAVE_FAILED';
-    expect(safeRendererErrorMessage(mismatched)).toBe('処理に失敗しました。再度お試しください。');
+    const mismatched = {
+      brand: 'checklistmaker.renderer-user-error.v1',
+      code: 'PROJECT_SAVE_FAILED',
+      presentation: {
+        title: '秘密',
+        message: 'Cannot read properties of undefined',
+        extra: true
+      }
+    };
+    expect(safeRendererError(mismatched)).toEqual({
+      code: 'INTERNAL_ERROR',
+      presentation: GENERIC_USER_PRESENTATION
+    });
   });
 
   it('genericizes every untrusted Error message and every non-Error value', () => {
@@ -329,7 +343,10 @@ describe('safeRendererErrorMessage', () => {
     ];
 
     for (const error of untrusted) {
-      expect(safeRendererErrorMessage(error)).toBe('処理に失敗しました。再度お試しください。');
+      expect(safeRendererError(error)).toEqual({
+        code: 'INTERNAL_ERROR',
+        presentation: GENERIC_USER_PRESENTATION
+      });
     }
   });
 });

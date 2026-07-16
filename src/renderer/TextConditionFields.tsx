@@ -9,7 +9,7 @@ export const TextConditionFields = ({ condition, disabled, onChange }: TextCondi
     case 'semantic':
       return (
         <label className="field full-width">
-          <span>判断内容</span>
+          <span>判断してほしい内容</span>
           <textarea
             name={`condition-semantic-instruction-${condition.id}`}
             value={condition.instruction}
@@ -35,15 +35,15 @@ export const TextConditionFields = ({ condition, disabled, onChange }: TextCondi
             />
           </label>
           <label className="field">
-            <span>一致条件</span>
+            <span>必須語句の満たし方</span>
             <select
               name={`condition-required-match-${condition.id}`}
               value={condition.matchMode}
               onChange={(event) => onChange({ ...condition, matchMode: event.currentTarget.value as 'all' | 'any' })}
               disabled={disabled}
             >
-              <option value="all">すべて必要</option>
-              <option value="any">いずれか必要</option>
+              <option value="all">すべての語句が必要</option>
+              <option value="any">いずれかの語句が必要</option>
             </select>
           </label>
           <label className="checkbox-field align-end">

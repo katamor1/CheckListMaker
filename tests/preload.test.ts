@@ -3,18 +3,18 @@ import { IPC } from '../src/shared/ipc.js';
 import {
   PRELOAD_IPC,
   PRELOAD_RENDERER_ERROR_BRAND,
-  PRELOAD_SAFE_USER_MESSAGES,
   PRELOAD_USER_ERROR_BRAND,
   createBridge
 } from '../src/preload/preload.js';
 import {
+  GENERIC_USER_PRESENTATION,
   IPC_USER_ERROR_BRAND,
-  SAFE_USER_MESSAGES,
   ipcSuccess
 } from '../src/shared/ipc-result.js';
+import { userFacingErrors } from '../src/shared/presentation/ja/index.js';
 import {
   normalizeRendererError,
-  safeRendererErrorMessage
+  safeRendererError
 } from '../src/renderer/session-orchestrator.js';
 
 describe('Preload bridge', () => {
@@ -45,30 +45,33 @@ describe('Preload bridge', () => {
     expect(removeListener).toHaveBeenCalledWith(PRELOAD_IPC.flushBeforeClose, registered);
   });
 
-  it('hides an Electron transport rejection', async () => {
+  it('hides an Electron transport rejection behind the generic structured presentation', async () => {
     const invoke = vi.fn().mockRejectedValue(
       new Error("Error invoking remote method 'project:save': Error: internal detail")
     );
     const bridge = createBridge({ invoke, on: vi.fn(), removeListener: vi.fn() });
-    await expect(bridge.saveProject()).rejects.toThrow('処理に失敗しました。再度お試しください。');
-    await expect(bridge.saveProject()).rejects.not.toThrow('project:save');
+    const rejected = await bridge.saveProject().catch((error: unknown) => error);
+    expect(safeRendererError(rejected)).toEqual({
+      code: 'INTERNAL_ERROR',
+      presentation: GENERIC_USER_PRESENTATION
+    });
+    expect(JSON.stringify(rejected)).not.toContain('project:save');
   });
 
-  it('keeps every duplicated preload channel equal to the shared contract', () => {
+  it('keeps duplicated preload channels and brands equal to the shared contract', () => {
     expect(PRELOAD_IPC).toEqual(IPC);
     expect(PRELOAD_USER_ERROR_BRAND).toBe(IPC_USER_ERROR_BRAND);
     expect(PRELOAD_RENDERER_ERROR_BRAND).toBe('checklistmaker.renderer-user-error.v1');
-    expect(PRELOAD_SAFE_USER_MESSAGES).toEqual(SAFE_USER_MESSAGES);
   });
 
-  it('transfers only a branded, allowlisted user message into a Renderer-safe Error', async () => {
+  it('transfers only a branded structured presentation into a Renderer-safe value', async () => {
     const userFailure = createBridge({
       invoke: vi.fn().mockResolvedValue({
         ok: false,
         error: {
           brand: 'checklistmaker.user-facing-error.v1',
           code: 'PROJECT_SAVE_FAILED',
-          message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+          presentation: userFacingErrors.projectSaveFailed
         }
       }),
       on: vi.fn(),
@@ -78,25 +81,26 @@ describe('Preload bridge', () => {
     expect(trusted).toEqual({
       brand: 'checklistmaker.renderer-user-error.v1',
       code: 'PROJECT_SAVE_FAILED',
-      message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+      presentation: userFacingErrors.projectSaveFailed
     });
     const transported = structuredClone(trusted);
-    expect(safeRendererErrorMessage(transported)).toBe('処理に失敗しました。再度お試しください。');
-    const normalized = normalizeRendererError(transported);
-    expect(normalized).toBeInstanceOf(Error);
-    expect((normalized as Error).name).toBe('CheckListMakerUserFacingError:PROJECT_SAVE_FAILED');
-    expect(safeRendererErrorMessage(normalized)).toBe(
-      'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
-    );
+    expect(normalizeRendererError(transported)).toEqual({
+      code: 'PROJECT_SAVE_FAILED',
+      presentation: userFacingErrors.projectSaveFailed
+    });
+    expect(safeRendererError(transported)).toEqual({
+      code: 'PROJECT_SAVE_FAILED',
+      presentation: userFacingErrors.projectSaveFailed
+    });
   });
 
-  it('genericizes unbranded, mismatched, and malformed failure envelopes', async () => {
+  it('genericizes unbranded, mismatched, malformed, and oversized failure envelopes', async () => {
     const failures = [
       {
         ok: false,
         error: {
           code: 'PROJECT_SAVE_FAILED',
-          message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+          presentation: userFacingErrors.projectSaveFailed
         }
       },
       {
@@ -104,7 +108,15 @@ describe('Preload bridge', () => {
         error: {
           brand: 'checklistmaker.user-facing-error.v1',
           code: 'PROJECT_SAVE_FAILED',
-          message: 'Cannot read properties of undefined'
+          presentation: { title: '秘密', message: 'Cannot read properties of undefined', extra: true }
+        }
+      },
+      {
+        ok: false,
+        error: {
+          brand: 'checklistmaker.user-facing-error.v1',
+          code: 'PROJECT_SAVE_FAILED',
+          presentation: { title: 'a'.repeat(2_001), message: 'message' }
         }
       },
       null
@@ -117,16 +129,11 @@ describe('Preload bridge', () => {
         removeListener: vi.fn()
       });
       const error = await bridge.saveProject().catch((reason: unknown) => reason);
-      expect(safeRendererErrorMessage(normalizeRendererError(error)))
-        .toBe('処理に失敗しました。再度お試しください。');
+      expect(safeRendererError(error)).toEqual({
+        code: 'INTERNAL_ERROR',
+        presentation: GENERIC_USER_PRESENTATION
+      });
     }
-
-    const malformed = createBridge({
-      invoke: vi.fn().mockResolvedValue(null),
-      on: vi.fn(),
-      removeListener: vi.fn()
-    });
-    await expect(malformed.saveProject()).rejects.toThrow('処理に失敗しました。再度お試しください。');
   });
 
   it('subscribes to close cancellation with the matching request id', () => {

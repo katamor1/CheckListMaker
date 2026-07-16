@@ -7,28 +7,31 @@ import type {
   RepairPolicy,
   ValidationIssue
 } from '../shared/model.js';
+import {
+  actions,
+  messages,
+  projectModeLabel,
+  repairPolicyLabels,
+  statuses,
+  terminology
+} from '../shared/presentation/ja/index.js';
 import { ChecklistEditor } from './ChecklistEditor.js';
 import { GenerationSettingsForm } from './GenerationSettingsForm.js';
+import { PreflightIssueList } from './PreflightIssueList.js';
 import { ReferenceEditor } from './ReferenceEditor.js';
 
 export type WorkspaceSection = 'overview' | 'references' | 'checklist';
 
-export const modeLabel = (mode: ProjectMode): string =>
-  mode === 'existing_document' ? '既存文書を検証' : '文書を生成して検証';
+export const modeLabel = (mode: ProjectMode): string => projectModeLabel(mode);
 
-const repairPolicyLabel = (policy: RepairPolicy): string => {
-  switch (policy) {
-    case 'auto_fix': return '安全な場合は自動修正';
-    case 'suggest_only': return '修正案のみ';
-    case 'do_not_modify': return '変更・具体案を禁止';
-  }
-};
+const repairPolicyLabel = (policy: RepairPolicy): string => repairPolicyLabels[policy];
 
 export interface ProjectWorkspaceProps {
   project: ProjectDefinition;
   dirty: boolean;
   activeSection: WorkspaceSection;
   issues: readonly ValidationIssue[];
+  preflightHasRun: boolean;
   busy: boolean;
   onSectionChange(section: WorkspaceSection): void;
   onProjectNameChange(name: string): void;
@@ -46,8 +49,9 @@ export interface ProjectWorkspaceProps {
 export const ProjectWorkspace = ({
   project,
   dirty,
-  activeSection: activeSection,
+  activeSection,
   issues,
+  preflightHasRun,
   busy,
   onSectionChange,
   onProjectNameChange,
@@ -65,25 +69,25 @@ export const ProjectWorkspace = ({
   const warningCount = issues.length - errorCount;
 
   return (
-    <section className="workspace" aria-label="プロジェクトワークスペース">
+    <section className="workspace" aria-label="プロジェクト編集">
       <div className="panel primary-panel">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">PROJECT</p>
+            <p className="eyebrow">{terminology.project}</p>
             <h2>{modeLabel(project.mode)}</h2>
           </div>
           <span className={dirty ? 'status warning' : 'status ok'}>
-            {dirty ? '未保存' : '保存済み'}
+            {dirty ? statuses.unsaved : statuses.saved}
           </span>
         </div>
 
         <dl className="project-stats">
           <div><dt>チェック項目</dt><dd>{project.checklist.items.length}</dd></div>
-          <div><dt>参考資料</dt><dd>{project.references.length}</dd></div>
-          <div><dt>既定修正方針</dt><dd>{repairPolicyLabel(project.defaultRepairPolicy)}</dd></div>
+          <div><dt>{terminology.referenceDocument}</dt><dd>{project.references.length}</dd></div>
+          <div><dt>{terminology.projectDefaultRepairPolicy}</dt><dd>{repairPolicyLabel(project.defaultRepairPolicy)}</dd></div>
         </dl>
 
-        <nav className="workspace-tabs" aria-label="編集セクション" role="tablist">
+        <nav className="workspace-tabs" aria-label="編集する内容" role="tablist">
           <button
             type="button"
             role="tab"
@@ -91,7 +95,7 @@ export const ProjectWorkspace = ({
             className={activeSection === 'overview' ? 'active' : ''}
             onClick={() => onSectionChange('overview')}
             disabled={busy}
-          >概要・文書</button>
+          >{terminology.overviewAndDocument}</button>
           <button
             type="button"
             role="tab"
@@ -99,7 +103,7 @@ export const ProjectWorkspace = ({
             className={activeSection === 'references' ? 'active' : ''}
             onClick={() => onSectionChange('references')}
             disabled={busy}
-          >参考資料 <span className="tab-count">{project.references.length}</span></button>
+          >{terminology.referenceDocument} <span className="tab-count">{project.references.length}</span></button>
           <button
             type="button"
             role="tab"
@@ -107,7 +111,7 @@ export const ProjectWorkspace = ({
             className={activeSection === 'checklist' ? 'active' : ''}
             onClick={() => onSectionChange('checklist')}
             disabled={busy}
-          >チェックリスト <span className="tab-count">{project.checklist.items.length}</span></button>
+          >{terminology.checklist} <span className="tab-count">{project.checklist.items.length}</span></button>
         </nav>
 
         <div className="workspace-content" role="tabpanel">
@@ -115,8 +119,8 @@ export const ProjectWorkspace = ({
             <section className="editor-section" aria-labelledby="overview-heading">
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">OVERVIEW</p>
-                  <h3 id="overview-heading">概要・文書</h3>
+                  <p className="eyebrow">{terminology.overviewAndDocument}</p>
+                  <h3 id="overview-heading">{terminology.overviewAndDocument}</h3>
                 </div>
               </div>
 
@@ -132,15 +136,17 @@ export const ProjectWorkspace = ({
               {project.mode === 'existing_document' ? (
                 <div className="document-card">
                   <div>
-                    <strong>主対象文書</strong>
-                    <p>{project.target?.originalFileName ?? '未選択'}</p>
+                    <strong>{terminology.targetDocument}</strong>
+                    <p>{project.target?.originalFileName ?? messages.targetNotSelected}</p>
                   </div>
-                  <button type="button" className="secondary" onClick={onTargetSelect} disabled={busy}>文書を選択</button>
+                  <button type="button" className="secondary" onClick={onTargetSelect} disabled={busy}>
+                    {actions.selectTargetDocument}
+                  </button>
                 </div>
               ) : project.generation ? (
                 <GenerationSettingsForm generation={project.generation} disabled={busy} onChange={onGenerationChange} />
               ) : (
-                <p className="empty-state">文書生成設定がありません。プロジェクトを作り直してください。</p>
+                <p className="empty-state">{messages.generationMissing}プロジェクトを作成し直してください。</p>
               )}
             </section>
           ) : null}
@@ -168,33 +174,30 @@ export const ProjectWorkspace = ({
         </div>
 
         <div className="actions workspace-actions">
-          <button type="button" onClick={() => onSave(false)} disabled={busy}>保存</button>
-          <button type="button" className="secondary" onClick={() => onSave(true)} disabled={busy}>名前を付けて保存</button>
-          <button type="button" className="secondary" onClick={onValidate} disabled={busy}>事前検査</button>
-          <button type="button" onClick={onExport} disabled={busy}>Copilot用ZIPを作成</button>
+          <button type="button" onClick={() => onSave(false)} disabled={busy}>{actions.saveOverwrite}</button>
+          <button type="button" className="secondary" onClick={() => onSave(true)} disabled={busy}>{actions.saveAs}</button>
+          <button type="button" className="secondary" onClick={onValidate} disabled={busy}>{actions.runPreflight}</button>
+          <button type="button" onClick={onExport} disabled={busy}>{actions.createCopilotPackage}</button>
         </div>
       </div>
 
       <aside className="panel validation-panel" aria-label="事前検査結果">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">PREFLIGHT</p>
-            <h2>事前検査</h2>
+            <p className="eyebrow">{terminology.preflight}</p>
+            <h2>{terminology.preflight}</h2>
           </div>
-          <span className="issue-count">エラー {errorCount} / 警告 {warningCount}</span>
+          <span className="issue-count">エラー {errorCount}件、警告 {warningCount}件</span>
         </div>
-        {issues.length === 0 ? (
-          <p className="empty-state">「事前検査」を実行すると、パッケージ生成前の問題をここに表示します。</p>
+        {!preflightHasRun ? (
+          <div className="empty-state">
+            <p>{messages.preflightNotRun}</p>
+            <p>{messages.preflightHelp}</p>
+          </div>
+        ) : issues.length === 0 ? (
+          <p className="empty-state">{messages.preflightPassed}</p>
         ) : (
-          <ul className="issue-list">
-            {issues.map((issue, index) => (
-              <li key={`${issue.code}-${index}`} className={issue.severity}>
-                <strong>{issue.message}</strong>
-                <span>{issue.remediation}</span>
-                <code>{issue.code}</code>
-              </li>
-            ))}
-          </ul>
+          <PreflightIssueList issues={issues} />
         )}
       </aside>
     </section>

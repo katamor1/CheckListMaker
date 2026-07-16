@@ -20,6 +20,7 @@ CheckListMakerは、非エンジニアでも文書レビュー用のチェック
 - [WindowsポータブルEXEの作成](#windowsポータブルexeの作成)
 - [リリース手順](#リリース手順)
 - [現在の制約と未完了項目](#現在の制約と未完了項目)
+- [日本語UI文言](#日本語ui文言)
 - [設計資料](#設計資料)
 
 ## できること
@@ -415,6 +416,15 @@ GitHub Releaseには次を添付・記載します。
 
 これらが完了するまで、リポジトリ上の成果物を安定版として扱わないでください。
 
+## 日本語UI文言
+
+Electron画面、通知、事前検査、ファイルダイアログ、利用者向けエラーでは、正確さを優先した専門的な日本語を使用します。共通文言は`src/shared/presentation/ja/`で管理し、利用者向けの英語装飾見出しや、生のOS・Node.js例外文を通常画面へ表示しません。
+
+文言変更では、型検査、Vitest、サンプル検証、本番ビルドに加え、Windows 11上でキーボード操作と100%、150%、200%の表示倍率を確認します。手動確認が未実施の項目は、視覚的な受入完了として扱いません。
+
+- [日本語UI文言設計](docs/superpowers/specs/2026-07-16-electron-japanese-ui-copy-design.md)
+- [日本語UI文言の手動確認チェックリスト](docs/testing/electron-japanese-ui-copy-checklist.md)
+
 ## MVP対象外
 
 - AI APIとの直接接続
@@ -433,6 +443,8 @@ GitHub Releaseには次を添付・記載します。
 - [MVP設計仕様](docs/superpowers/specs/2026-07-14-checklistmaker-mvp-design.md)
 - [Electron再プラットフォームADR](docs/decisions/0001-electron-replatform.md)
 - [Electron移行ステータス](docs/implementation/2026-07-15-electron-replatform-status.md)
+- [日本語UI文言設計](docs/superpowers/specs/2026-07-16-electron-japanese-ui-copy-design.md)
+- [日本語UI文言実装ステータス](docs/implementation/2026-07-16-japanese-ui-copy-status.md)
 
 ## 開発方針
 
@@ -441,3 +453,10 @@ GitHub Releaseには次を添付・記載します。
 - 文書内容とファイルパスをログやエラーへ不用意に出さない
 - 外部依存は最小限にし、バージョンを固定する
 - 自動検証に合格しても、手動受入なしにリリース完了と宣言しない
+
+## 日本語UI文言の検証
+
+- [日本語UI文言設計](docs/superpowers/specs/2026-07-16-electron-japanese-ui-copy-design.md)
+- [Windows目視確認チェックリスト](docs/testing/electron-japanese-ui-copy-checklist.md)
+
+自動検証では型検査、Vitest、サンプル検証、本番ビルドを確認します。キーボード操作と100％、150％、200％表示倍率は、チェックリストへ実機証跡を記録するまで未完了です。

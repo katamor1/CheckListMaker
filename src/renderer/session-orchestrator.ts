@@ -1,7 +1,8 @@
 import {
-  GENERIC_USER_MESSAGE,
-  RENDERER_USER_ERROR_NAME_PREFIX,
-  isSafeUserMessage
+  GENERIC_USER_PRESENTATION,
+  KNOWN_USER_ERROR_CODES,
+  isUserFacingErrorPresentation,
+  type UserFacingErrorPresentation
 } from '../shared/ipc-result.js';
 import type {
   AppBridge,
@@ -44,26 +45,45 @@ export interface RendererSessionOrchestratorOptions {
 
 export const RENDERER_ERROR_BRAND = 'checklistmaker.renderer-user-error.v1' as const;
 
-export const normalizeRendererError = (error: unknown): unknown => {
+export interface RendererUserFacingError {
+  code: string;
+  presentation: UserFacingErrorPresentation;
+}
+
+export const normalizeRendererError = (
+  error: unknown
+): RendererUserFacingError | unknown => {
   if (!error || typeof error !== 'object') return error;
-  const candidate = error as { brand?: unknown; code?: unknown; message?: unknown };
+  const candidate = error as Record<string, unknown>;
+  if (Object.keys(candidate).some((key) => !['brand', 'code', 'presentation'].includes(key))) return error;
   if (
-    candidate.brand !== RENDERER_ERROR_BRAND ||
-    typeof candidate.code !== 'string' ||
-    typeof candidate.message !== 'string' ||
-    !isSafeUserMessage(candidate.code, candidate.message)
+    candidate['brand'] !== RENDERER_ERROR_BRAND ||
+    typeof candidate['code'] !== 'string' ||
+    !KNOWN_USER_ERROR_CODES.has(candidate['code']) ||
+    !isUserFacingErrorPresentation(candidate['presentation'])
   ) return error;
-  const trusted = new Error(candidate.message);
-  trusted.name = `${RENDERER_USER_ERROR_NAME_PREFIX}${candidate.code}`;
-  return trusted;
+  return {
+    code: candidate['code'],
+    presentation: candidate['presentation']
+  };
 };
 
-export const safeRendererErrorMessage = (error: unknown): string => {
-  if (!(error instanceof Error) || !error.name.startsWith(RENDERER_USER_ERROR_NAME_PREFIX)) {
-    return GENERIC_USER_MESSAGE;
+export const safeRendererError = (error: unknown): RendererUserFacingError => {
+  const normalized = normalizeRendererError(error);
+  if (
+    normalized &&
+    typeof normalized === 'object' &&
+    'code' in normalized &&
+    'presentation' in normalized &&
+    typeof normalized.code === 'string' &&
+    isUserFacingErrorPresentation(normalized.presentation)
+  ) {
+    return normalized as RendererUserFacingError;
   }
-  const code = error.name.slice(RENDERER_USER_ERROR_NAME_PREFIX.length);
-  return isSafeUserMessage(code, error.message) ? error.message : GENERIC_USER_MESSAGE;
+  return {
+    code: 'INTERNAL_ERROR',
+    presentation: GENERIC_USER_PRESENTATION
+  };
 };
 
 export class RendererSessionOrchestrator {

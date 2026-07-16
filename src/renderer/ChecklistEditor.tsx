@@ -1,4 +1,5 @@
 import type { ChecklistDefinition, RepairPolicy } from '../shared/model.js';
+import { actions, messages, terminology } from '../shared/presentation/ja/index.js';
 import { addCheckItem } from './checklist-editor-model.js';
 import { setOptionalText, repairPolicyOptions } from './checklist-editor-shared.js';
 import type { ConditionReferenceOption } from './ConditionEditor.js';
@@ -25,11 +26,11 @@ export const ChecklistEditor = ({
   <section className="editor-section" aria-labelledby="checklist-heading">
     <div className="section-heading">
       <div>
-        <p className="eyebrow">CHECKLIST</p>
-        <h3 id="checklist-heading">チェックリスト</h3>
-        <p className="section-help">項目内は一段階のANDまたはORです。条件と評価範囲はGUIから型別に設定できます。</p>
+        <p className="eyebrow">{terminology.checklist}</p>
+        <h3 id="checklist-heading">{terminology.checklist}</h3>
+        <p className="section-help">項目内の条件は一段階のANDまたはORで結合します。条件と評価対象範囲は種類ごとに設定できます。</p>
       </div>
-      <button type="button" onClick={() => onChecklistChange(addCheckItem(checklist))} disabled={disabled}>チェック項目を追加</button>
+      <button type="button" onClick={() => onChecklistChange(addCheckItem(checklist))} disabled={disabled}>{actions.addChecklistItem}</button>
     </div>
 
     <div className="form-grid two-column checklist-metadata">
@@ -43,7 +44,7 @@ export const ChecklistEditor = ({
         />
       </label>
       <label className="field">
-        <span>プロジェクト既定の修正方針</span>
+        <span>{terminology.projectDefaultRepairPolicy}</span>
         <select
           name="default-repair-policy"
           value={defaultRepairPolicy}
@@ -72,7 +73,7 @@ export const ChecklistEditor = ({
     />
 
     {checklist.items.length === 0 ? (
-      <p className="empty-state">チェック項目がありません。1件以上追加してください。</p>
+      <p className="empty-state">{messages.checklistItemsEmpty}1件以上追加してください。</p>
     ) : (
       <div className="editor-stack checklist-stack">
         {checklist.items.map((item, itemIndex) => (

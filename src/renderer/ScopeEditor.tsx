@@ -14,10 +14,10 @@ const linesToValues = (value: string): string[] =>
 
 export const ScopeEditor = ({ conditionId, scope, disabled, onChange }: ScopeEditorProps) => (
   <fieldset className="compact-fieldset scope-editor">
-    <legend>評価範囲</legend>
+    <legend>評価対象範囲</legend>
     <div className="form-grid two-column">
       <label className="field">
-        <span>範囲</span>
+        <span>範囲の種類</span>
         <select
           name={`condition-scope-${conditionId}`}
           value={scope.type}
@@ -29,7 +29,7 @@ export const ScopeEditor = ({ conditionId, scope, disabled, onChange }: ScopeEdi
       </label>
 
       <label className="field">
-        <span>対象が見つからない場合</span>
+        <span>指定した範囲が見つからない場合</span>
         <select
           name={`condition-on-not-found-${conditionId}`}
           value={scope.onNotFound}
@@ -40,14 +40,14 @@ export const ScopeEditor = ({ conditionId, scope, disabled, onChange }: ScopeEdi
           disabled={disabled}
         >
           <option value="invalid">不適合にする</option>
-          <option value="needs_information">確認が必要にする</option>
+          <option value="needs_information">確認が必要な状態にする</option>
         </select>
       </label>
 
       {scope.type === 'section' ? (
         <>
           <label className="field">
-            <span>見出し</span>
+            <span>対象の見出し</span>
             <input
               name={`condition-scope-heading-${conditionId}`}
               value={scope.heading}
@@ -68,7 +68,7 @@ export const ScopeEditor = ({ conditionId, scope, disabled, onChange }: ScopeEdi
               disabled={disabled}
             >
               <option value="exact">完全一致</option>
-              <option value="semantic">意味で一致</option>
+              <option value="semantic">意味が近い見出しを許可</option>
             </select>
           </label>
           <label className="checkbox-field full-width">
@@ -97,7 +97,7 @@ export const ScopeEditor = ({ conditionId, scope, disabled, onChange }: ScopeEdi
             />
           </label>
           <label className="field full-width">
-            <span>期待する列名（1行に1件）</span>
+            <span>必要な列名（1行に1件）</span>
             <textarea
               name={`condition-scope-table-columns-${conditionId}`}
               value={scope.expectedColumns.join('\n')}

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IPC } from '../src/shared/ipc.js';
-import { ipcSuccess } from '../src/shared/ipc-result.js';
+import { GENERIC_USER_PRESENTATION, ipcSuccess } from '../src/shared/ipc-result.js';
+import { userFacingErrors } from '../src/shared/presentation/ja/index.js';
 import {
   registerMainIpcBindings
 } from '../src/main/main-ipc-bindings.js';
@@ -96,7 +97,7 @@ describe('registerMainIpcBindings', () => {
       error: {
         brand: 'checklistmaker.user-facing-error.v1',
         code: 'WINDOW_UNAVAILABLE',
-        message: '処理に失敗しました。再度お試しください。'
+        presentation: GENERIC_USER_PRESENTATION
       }
     });
     expect(fixture.handlersFor).toHaveBeenCalledTimes(callsBeforeMissingOwner);
@@ -116,9 +117,13 @@ describe('registerMainIpcBindings', () => {
 
     await expect(
       fixture.installed.get(IPC.openFolder)!(event, 'C:\\not-allowed\\package.zip')
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
       ok: false,
-      error: { code: 'OUTPUT_NOT_ALLOWED' }
+      error: {
+        brand: 'checklistmaker.user-facing-error.v1',
+        code: 'OUTPUT_NOT_ALLOWED',
+        presentation: userFacingErrors.outputNotAllowed
+      }
     });
 
     const unexpected = new Error('shell implementation failed');
@@ -127,7 +132,7 @@ describe('registerMainIpcBindings', () => {
       fixture.installed.get(IPC.openFolder)!(event, 'C:\\allowed\\package.zip')
     ).resolves.toEqual({
       ok: false,
-      error: { code: 'INTERNAL_ERROR', message: '処理に失敗しました。再度お試しください。' }
+      error: { code: 'INTERNAL_ERROR', presentation: GENERIC_USER_PRESENTATION }
     });
     expect(fixture.reportUnexpected).toHaveBeenCalledWith(unexpected);
   });
@@ -140,7 +145,7 @@ describe('registerMainIpcBindings', () => {
       error: {
         brand: 'checklistmaker.user-facing-error.v1',
         code: 'WINDOW_UNAVAILABLE',
-        message: '処理に失敗しました。再度お試しください。'
+        presentation: GENERIC_USER_PRESENTATION
       }
     };
 

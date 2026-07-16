@@ -12,11 +12,12 @@ describe('Task 5 production wiring', () => {
     expect(source.match(/ipcMain\.handle/g)).toHaveLength(1);
   });
 
-  it('routes App session actions, edits, and close lifecycle through the tested orchestrator', async () => {
+  it('routes App session actions, edits, close lifecycle, and errors through tested adapters', async () => {
     const source = await readFile(new URL('../src/renderer/App.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain("from './session-orchestrator.js'");
-    expect(source).toContain('normalizeRendererError');
+    expect(source).toContain('safeRendererError');
+    expect(source).toContain('UserFacingErrorNotice');
     expect(source).toContain('new RendererSessionOrchestrator({');
     expect(source).toContain('orchestrator.runSessionOperation(');
     expect(source).toContain('orchestrator.commitProject(');

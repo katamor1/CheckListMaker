@@ -13,6 +13,7 @@ import {
   projectSaveValidationError,
   UserFacingError
 } from '../shared/ipc-result.js';
+import { userFacingErrors } from '../shared/presentation/ja/index.js';
 import { DocumentRegistry } from './document-registry.js';
 import { ProjectStore } from './project-store.js';
 import { CopilotPackageGenerator } from './package-generator.js';
@@ -107,7 +108,7 @@ export class ProjectSessionManager {
   }
 
   requireCurrent(): ProjectSessionContext {
-    if (!this.#current) throw new UserFacingError('PROJECT_REQUIRED', 'プロジェクトを新規作成するか開いてください。');
+    if (!this.#current) throw new UserFacingError('PROJECT_REQUIRED', userFacingErrors.projectRequired);
     return this.#current;
   }
 
@@ -132,11 +133,7 @@ export class ProjectSessionManager {
       assertProjectDefinition(project);
       return { project, path, dirty: false, revision: 0, resources };
     } catch (error) {
-      throw new UserFacingError(
-        'PROJECT_OPEN_FAILED',
-        'プロジェクトを開けませんでした。ファイルが破損しているか、対応していない形式です。',
-        error
-      );
+      throw new UserFacingError('PROJECT_OPEN_FAILED', userFacingErrors.projectOpenFailed, error);
     }
   }
 
@@ -155,10 +152,7 @@ export class ProjectSessionManager {
     const tokens = [project.target?.token, ...project.references.map((reference) => reference.document.token)]
       .filter((token): token is string => token !== undefined);
     if (tokens.some((token) => !current.resources.registry.has(token))) {
-      throw new UserFacingError(
-        'PROJECT_DOCUMENT_MISMATCH',
-        '選択文書が現在のプロジェクトと一致しません。文書を選択し直してください。'
-      );
+      throw new UserFacingError('PROJECT_DOCUMENT_MISMATCH', userFacingErrors.projectDocumentMismatch);
     }
     current.project = structuredClone(project);
     current.revision = revision;
@@ -170,7 +164,7 @@ export class ProjectSessionManager {
     const current = this.requireCurrent();
     const project = update(structuredClone(current.project));
     if (project.projectId !== current.project.projectId) {
-      throw new UserFacingError('PROJECT_MISMATCH', '現在のプロジェクトと更新内容が一致しません。');
+      throw new UserFacingError('PROJECT_MISMATCH', userFacingErrors.projectMismatch);
     }
     current.project = project;
     current.revision += 1;
@@ -201,11 +195,7 @@ export class ProjectSessionManager {
     try {
       await current.resources.store.saveProject(path, project);
     } catch (error) {
-      throw new UserFacingError(
-        'PROJECT_SAVE_FAILED',
-        'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。',
-        error
-      );
+      throw new UserFacingError('PROJECT_SAVE_FAILED', userFacingErrors.projectSaveFailed, error);
     }
     current.path = path;
     if (current.revision === revisionAtStart) {

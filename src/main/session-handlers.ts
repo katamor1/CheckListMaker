@@ -1,5 +1,10 @@
 import { IPC } from '../shared/ipc.js';
-import { UserFacingError } from '../shared/ipc-result.js';
+import {
+  KNOWN_USER_ERROR_CODES,
+  UserFacingError,
+  isUserFacingErrorPresentation,
+  type UserFacingErrorPresentation
+} from '../shared/ipc-result.js';
 import type {
   ChecklistTemplateDefinition,
   DraftUpdateResult,
@@ -13,6 +18,7 @@ import type {
   SessionSnapshot,
   ValidationIssue
 } from '../shared/model.js';
+import { userFacingErrors } from '../shared/presentation/ja/index.js';
 import type { DocumentRegistry } from './document-registry.js';
 import type { ProjectSessionContext, ProjectSessionManager } from './project-session.js';
 
@@ -47,18 +53,27 @@ export interface SessionHandlerDependencies {
 }
 
 const invalidArgument = (): never => {
-  throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
+  throw new UserFacingError('INVALID_ARGUMENT', userFacingErrors.invalidArgument);
 };
 
 const expectedFailure = async <T>(
   operation: () => Promise<T>,
   code: string,
-  message: string
+  presentation: UserFacingErrorPresentation,
+  preserveTrustedError = false
 ): Promise<T> => {
   try {
     return await operation();
   } catch (error) {
-    throw new UserFacingError(code, message, error);
+    if (
+      preserveTrustedError &&
+      error instanceof UserFacingError &&
+      KNOWN_USER_ERROR_CODES.has(error.code) &&
+      isUserFacingErrorPresentation(error.presentation)
+    ) {
+      throw error;
+    }
+    throw new UserFacingError(code, presentation, error);
   }
 };
 
@@ -113,7 +128,7 @@ export const createSessionHandlers = (
     const selected = await expectedFailure(
       () => dependencies.selectTarget(senderId, current.resources.registry),
       'DOCUMENT_REGISTER_FAILED',
-      '文書を登録できませんでした。ファイルを確認してください。'
+      userFacingErrors.targetRegisterFailed
     );
     return selected ? updateTarget(dependencies.manager, selected) : null;
   }),
@@ -122,26 +137,24 @@ export const createSessionHandlers = (
     return expectedFailure(
       () => dependencies.selectReferences(senderId, current.resources.registry),
       'DOCUMENT_REGISTER_FAILED',
-      '参考資料を登録できませんでした。ファイルを確認してください。'
+      userFacingErrors.referencesRegisterFailed
     );
   }),
   [IPC.exportPackage]: async ({ senderId }) => {
     const result = await expectedFailure(
       () => dependencies.controllerFor(senderId).export(),
       'PACKAGE_EXPORT_FAILED',
-      'パッケージを作成できませんでした。保存先とアクセス権を確認してください。'
+      userFacingErrors.packageExportFailed,
+      true
     );
     if (result.canceled) return result;
     if (!result.path) {
-      throw new UserFacingError(
-        'PACKAGE_EXPORT_FAILED',
-        'パッケージを作成できませんでした。保存先とアクセス権を確認してください。'
-      );
+      throw new UserFacingError('PACKAGE_EXPORT_FAILED', userFacingErrors.packageExportFailed);
     }
     const sizeBytes = await expectedFailure(
       () => dependencies.measureOutput(result.path as string),
       'PACKAGE_EXPORT_FAILED',
-      'パッケージを作成できませんでした。保存先とアクセス権を確認してください。'
+      userFacingErrors.packageExportFailed
     );
     dependencies.allowedOutputPaths.add(result.path);
     return { ...result, sizeBytes };
@@ -159,7 +172,7 @@ export const createSessionHandlers = (
           dependencies.manager.currentTemplate()
         ),
         'TEMPLATE_SAVE_FAILED',
-        'テンプレートを保存できませんでした。保存先とアクセス権を確認してください。'
+        userFacingErrors.templateSaveFailed
       );
       dependencies.manager.setCurrentTemplate(saved);
       return { canceled: false, path };
@@ -172,7 +185,7 @@ export const createSessionHandlers = (
       const opened = await expectedFailure(
         () => current.resources.store.openTemplate(path),
         'TEMPLATE_OPEN_FAILED',
-        'テンプレートを開けませんでした。ファイルが破損しているか、対応していない形式です。'
+        userFacingErrors.templateOpenFailed
       );
       dependencies.manager.setCurrentTemplate(opened);
       return opened;

@@ -1,4 +1,5 @@
 import type { DocumentGenerationDefinition } from '../shared/model.js';
+import { terminology } from '../shared/presentation/ja/index.js';
 
 export interface GenerationSettingsFormProps {
   generation: DocumentGenerationDefinition;
@@ -18,10 +19,10 @@ export const GenerationSettingsForm = ({ generation, disabled, onChange }: Gener
 
   return (
     <fieldset className="generation-form" disabled={disabled}>
-      <legend>文書生成設定</legend>
+      <legend>{terminology.generationSettings}</legend>
 
       <label className="field">
-        <span>文書タイトル</span>
+        <span>{terminology.documentTitle}</span>
         <input
           name="generation-title"
           value={generation.title}
@@ -31,7 +32,7 @@ export const GenerationSettingsForm = ({ generation, disabled, onChange }: Gener
       </label>
 
       <label className="field">
-        <span>想定読者</span>
+        <span>{terminology.intendedAudience}</span>
         <input
           name="generation-audience"
           value={generation.audience}
@@ -41,7 +42,7 @@ export const GenerationSettingsForm = ({ generation, disabled, onChange }: Gener
       </label>
 
       <label className="field full-width">
-        <span>文書の目的</span>
+        <span>{terminology.documentPurpose}</span>
         <textarea
           name="generation-purpose"
           value={generation.purpose}
@@ -51,7 +52,7 @@ export const GenerationSettingsForm = ({ generation, disabled, onChange }: Gener
       </label>
 
       <label className="field">
-        <span>言語</span>
+        <span>{terminology.documentLanguage}</span>
         <input
           name="generation-language"
           value={generation.language}
@@ -61,7 +62,7 @@ export const GenerationSettingsForm = ({ generation, disabled, onChange }: Gener
       </label>
 
       <label className="field">
-        <span>生成形式</span>
+        <span>{terminology.outputFormat}</span>
         <select
           name="generation-format"
           value={generation.requestedFormat}
@@ -69,14 +70,14 @@ export const GenerationSettingsForm = ({ generation, disabled, onChange }: Gener
             update({ requestedFormat: event.currentTarget.value as DocumentGenerationDefinition['requestedFormat'] })
           }
         >
-          <option value="md">Markdown (.md)</option>
-          <option value="txt">Text (.txt)</option>
-          <option value="docx">Word (.docx)</option>
+          <option value="md">Markdown（.md）</option>
+          <option value="txt">テキスト（.txt）</option>
+          <option value="docx">Word（.docx）</option>
         </select>
       </label>
 
       <label className="field full-width">
-        <span>文書生成指示</span>
+        <span>{terminology.generationInstructions}</span>
         <textarea
           name="generation-instructions"
           value={generation.instructions}
@@ -86,7 +87,7 @@ export const GenerationSettingsForm = ({ generation, disabled, onChange }: Gener
         />
       </label>
 
-      <div className="generation-options full-width" aria-label="文書生成の制約">
+      <div className="generation-options full-width" aria-label="文書生成時の制約">
         <label className="checkbox-field">
           <input
             type="checkbox"

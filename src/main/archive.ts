@@ -8,7 +8,9 @@ const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 512 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_ENTRIES = 1024;
-const FIXED_ZIP_DATE = new Date('1980-01-01T00:00:00.000Z');
+// fflate writes ZIP timestamps from local calendar fields. Fix those fields
+// explicitly so archive bytes do not vary with the build machine's time zone.
+const FIXED_ZIP_DATE = new Date(1980, 0, 1, 9, 0, 0);
 
 export interface ManifestEntry {
   path: string;

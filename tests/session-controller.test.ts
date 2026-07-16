@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createProject } from '../src/shared/defaults.js';
-import { GENERIC_USER_MESSAGE, runIpcOperation } from '../src/shared/ipc-result.js';
+import { GENERIC_USER_PRESENTATION, runIpcOperation } from '../src/shared/ipc-result.js';
+import { userFacingErrors } from '../src/shared/presentation/ja/index.js';
 import type { ProjectDefinition } from '../src/shared/model.js';
 import { DocumentRegistry } from '../src/main/document-registry.js';
 import {
@@ -241,7 +242,7 @@ describe('ProjectSessionController', () => {
       error: {
         brand: 'checklistmaker.user-facing-error.v1',
         code: 'PROJECT_OPEN_FAILED',
-        message: 'プロジェクトを開けませんでした。ファイルが破損しているか、対応していない形式です。'
+        presentation: userFacingErrors.projectOpenFailed
       }
     });
     expect(JSON.stringify(openResult)).not.toContain('C:\\private');
@@ -287,7 +288,7 @@ describe('ProjectSessionController', () => {
 
     expect(creationResult).toEqual({
       ok: false,
-      error: { code: 'INTERNAL_ERROR', message: GENERIC_USER_MESSAGE }
+      error: { code: 'INTERNAL_ERROR', presentation: GENERIC_USER_PRESENTATION }
     });
     expect(JSON.stringify(creationResult)).not.toContain('C:\\private');
     expect(reportUnexpected).toHaveBeenCalledWith(rawFailure);
@@ -307,7 +308,12 @@ describe('ProjectSessionController', () => {
 
     await expect(controller.updateDraft(null, 1)).rejects.toMatchObject({
       code: 'PROJECT_INVALID',
-      message: 'プロジェクトデータが不正です。'
+      presentation: {
+        title: '編集内容を反映できませんでした。',
+        message: 'プロジェクトデータの構造が不正です。',
+        dataSafety: '保存済みのプロジェクトファイルは変更されていません。',
+        nextAction: userFacingErrors.invalidArgument.nextAction
+      }
     });
 
     expect(manager.currentSummary()).toEqual(before);
@@ -359,7 +365,12 @@ describe('ProjectSessionController', () => {
       target: emptyTokenDocument
     }, 1)).rejects.toMatchObject({
       code: 'PROJECT_INVALID',
-      message: 'プロジェクトデータが不正です。'
+      presentation: {
+        title: '編集内容を反映できませんでした。',
+        message: 'プロジェクトデータの構造が不正です。',
+        dataSafety: '保存済みのプロジェクトファイルは変更されていません。',
+        nextAction: userFacingErrors.invalidArgument.nextAction
+      }
     });
 
     expect(manager.currentSummary()).toEqual(before);
@@ -385,7 +396,7 @@ describe('ProjectSessionController', () => {
       target: unknownDocument
     }, 1)).rejects.toMatchObject({
       code: 'PROJECT_DOCUMENT_MISMATCH',
-      message: '選択文書が現在のプロジェクトと一致しません。文書を選択し直してください。'
+      presentation: userFacingErrors.projectDocumentMismatch
     });
 
     expect(manager.currentSummary()).toEqual(before);
@@ -439,7 +450,7 @@ describe('ProjectSessionController', () => {
 
     await expect(controller.export()).rejects.toMatchObject({
       code: 'PROJECT_DIRTY',
-      message: 'プロジェクトを保存してからパッケージを作成してください。'
+      presentation: userFacingErrors.projectDirty
     });
     expect(controllerPorts.pickExportPath).not.toHaveBeenCalled();
     expect(context.resources.packageGenerator.generate).not.toHaveBeenCalled();

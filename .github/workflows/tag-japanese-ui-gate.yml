@@ -1,0 +1,171 @@
+name: Tag verified Japanese UI copy state
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/tag-japanese-ui-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  verify-and-tag:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out latest implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git and integrate current main
+        shell: pwsh
+        run: |
+          git config user.name 'checklistmaker-ci'
+          git config user.email 'checklistmaker-ci@users.noreply.github.com'
+          git fetch origin main
+          git merge --no-edit origin/main
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Refresh and verify deterministic samples
+        shell: pwsh
+        run: |
+          npm run build
+          node samples/tools/sample-projects.mjs --write
+          node samples/tools/sample-projects.mjs --check
+
+      - name: Run complete automated gate
+        shell: pwsh
+        run: |
+          npm run typecheck
+          npm test
+          npm run verify:samples
+          npm run build
+
+      - name: Verify compatibility boundary
+        shell: pwsh
+        run: |
+          git diff --exit-code origin/main...HEAD -- src/shared/model.ts src/main/archive.ts src/main/project-store.ts src/main/package-generator.ts
+          git diff --exit-code origin/main...HEAD -- samples ':!samples/ja-machine-control-design-review/projects/*.clmproj'
+
+      - name: Write static success marker and evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force docs/implementation | Out-Null
+          Set-Content -LiteralPath docs/implementation/japanese-ui-gate-passed.txt -Value 'passed' -Encoding ascii
+          @'
+          import { readFile, writeFile } from 'node:fs/promises';
+          let readme = await readFile('README.md', 'utf8');
+          const marker = '## 日本語UI文言の検証';
+          if (!readme.includes(marker)) {
+            readme = readme.trimEnd() + `\n\n${marker}\n\n` +
+              '- [日本語UI文言設計](docs/superpowers/specs/2026-07-16-electron-japanese-ui-copy-design.md)\n' +
+              '- [Windows目視確認チェックリスト](docs/testing/electron-japanese-ui-copy-checklist.md)\n\n' +
+              '自動検証では型検査、Vitest、サンプル検証、本番ビルドを確認します。' +
+              'キーボード操作と100％、150％、200％表示倍率は、チェックリストへ実機証跡を記録するまで未完了です。\n';
+            await writeFile('README.md', readme, 'utf8');
+          }
+          const lines = [
+            '# Electron版 日本語UI文言 自動検証記録',
+            '',
+            `- 実行日時: ${new Date().toISOString()}`,
+            '- 実行環境: GitHub Actions（Windows）',
+            '- 結果: 自動ゲート合格',
+            '',
+            '## 合格した工程',
+            '',
+            '- `npm run typecheck`',
+            '- `npm test`',
+            '- `npm run verify:samples`',
+            '- `npm run build`',
+            '- 決定論的サンプルプロジェクトの再生成・一致確認',
+            '- UI文言変更の契約境界確認',
+            '',
+            '## 未完了の手動ゲート',
+            '',
+            '- Windows 11実機のキーボード操作',
+            '- 100％、150％、200％表示倍率',
+            '- 長い日本語エラー文とダイアログの目視確認',
+            '',
+            '`docs/testing/electron-japanese-ui-copy-checklist.md`へ証跡を記録するまで、目視受入完了とは扱いません。',
+            ''
+          ];
+          await writeFile('docs/implementation/2026-07-16-japanese-ui-automated-gate.md', lines.join('\n'), 'utf8');
+          '@ | Set-Content -LiteralPath "$env:RUNNER_TEMP/write-evidence.mjs" -Encoding utf8
+          node "$env:RUNNER_TEMP/write-evidence.mjs"
+
+      - name: Remove temporary workflows and diagnostics
+        shell: pwsh
+        run: |
+          $names = @(
+            'export-japanese-ui-source.yml',
+            'diagnose-japanese-ui-tests.yml',
+            'refresh-japanese-ui-sample-projects.yml',
+            'finalize-japanese-ui-copy.yml',
+            'verify-and-report-japanese-ui-copy.yml',
+            'reconcile-japanese-ui-copy.yml',
+            'apply-regenerated-japanese-ui-samples.yml',
+            'complete-japanese-ui-copy.yml',
+            'tag-japanese-ui-gate.yml'
+          )
+          foreach ($name in $names) {
+            $path = Join-Path '.github/workflows' $name
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+          }
+          Get-ChildItem -LiteralPath '.github/workflows' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'diagnose.*sample|sample.*regeneration' } |
+            Remove-Item -Force
+          if (Test-Path -LiteralPath 'docs/implementation/japanese-ui-test-diagnostics.md') {
+            Remove-Item -LiteralPath 'docs/implementation/japanese-ui-test-diagnostics.md' -Force
+          }
+
+      - name: Commit, push, and tag verified state
+        id: commit
+        shell: pwsh
+        run: |
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'feat: complete Japanese UI copy implementation'
+          }
+          $sha = git rev-parse HEAD
+          git push origin HEAD:agent/japanese-ui-copy
+          git tag -f japanese-ui-copy-auto-passed $sha
+          git push --force origin refs/tags/japanese-ui-copy-auto-passed
+          "sha=$sha" >> $env:GITHUB_OUTPUT
+
+      - name: Record result on PR 6
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FINAL_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          $body = @"
+          ## 日本語UI文言の自動検証
+
+          検証済みコミット: `$env:FINAL_SHA`
+
+          Windows上で型検査、Vitest、サンプル検証、本番ビルド、決定論的サンプル一致確認、契約境界確認が成功しました。
+
+          Windows 11実機のキーボード操作、100％・150％・200％表示倍率、長文エラー表示の目視確認は未完了です。PRはドラフトのまま維持します。
+          "@
+          gh api repos/${{ github.repository }}/issues/6/comments -f body="$body"

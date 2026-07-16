@@ -1,23 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  GENERIC_USER_MESSAGE,
+  GENERIC_USER_PRESENTATION,
   UserFacingError,
   ipcSuccess,
   projectSaveValidationError,
   runIpcOperation
 } from '../src/shared/ipc-result.js';
+import { userFacingErrors } from '../src/shared/presentation/ja/index.js';
 
 describe('IPC result boundary', () => {
   it('returns successful values unchanged', async () => {
     await expect(runIpcOperation(async () => 42)).resolves.toEqual(ipcSuccess(42));
   });
 
-  it('preserves only an explicitly user-facing error', async () => {
+  it('preserves only an explicitly structured user-facing error', async () => {
     const result = await runIpcOperation(async () => {
-      throw new UserFacingError(
-        'PROJECT_SAVE_FAILED',
-        'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
-      );
+      throw new UserFacingError('PROJECT_SAVE_FAILED', userFacingErrors.projectSaveFailed);
     });
 
     expect(result).toEqual({
@@ -25,16 +23,17 @@ describe('IPC result boundary', () => {
       error: {
         brand: 'checklistmaker.user-facing-error.v1',
         code: 'PROJECT_SAVE_FAILED',
-        message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+        presentation: userFacingErrors.projectSaveFailed
       }
     });
   });
 
-  it('genericizes even a UserFacingError when its code and message are not allowlisted', async () => {
+  it('genericizes a UserFacingError with an unknown code or malformed presentation', async () => {
     const reportUnexpected = vi.fn();
     const unsafe = new UserFacingError(
-      'PROJECT_SAVE_FAILED',
-      'Cannot read properties of undefined at C:\\secret\\project.clmproj'
+      'PRIVATE_ERROR',
+      { title: '秘密', message: 'C:\\secret\\project.clmproj at stack' },
+      undefined
     );
 
     const result = await runIpcOperation(async () => {
@@ -43,9 +42,9 @@ describe('IPC result boundary', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: { code: 'INTERNAL_ERROR', message: GENERIC_USER_MESSAGE }
+      error: { code: 'INTERNAL_ERROR', presentation: GENERIC_USER_PRESENTATION }
     });
-    expect(JSON.stringify(result)).not.toContain('Cannot read properties');
+    expect(JSON.stringify(result)).not.toContain('secret');
     expect(reportUnexpected).toHaveBeenCalledWith(unsafe);
   });
 
@@ -55,7 +54,7 @@ describe('IPC result boundary', () => {
     const result = await runIpcOperation(async () => {
       throw new UserFacingError(
         'PROJECT_SAVE_FAILED',
-        'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。',
+        userFacingErrors.projectSaveFailed,
         cause
       );
     }, reportUnexpected);
@@ -65,7 +64,7 @@ describe('IPC result boundary', () => {
       error: {
         brand: 'checklistmaker.user-facing-error.v1',
         code: 'PROJECT_SAVE_FAILED',
-        message: 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
+        presentation: userFacingErrors.projectSaveFailed
       }
     });
     expect(reportUnexpected).toHaveBeenCalledWith(cause);
@@ -80,32 +79,32 @@ describe('IPC result boundary', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: { code: 'INTERNAL_ERROR', message: GENERIC_USER_MESSAGE }
+      error: { code: 'INTERNAL_ERROR', presentation: GENERIC_USER_PRESENTATION }
     });
     expect(JSON.stringify(result)).not.toContain('secret stack detail');
     expect(reportUnexpected).toHaveBeenCalledOnce();
   });
 
-  it('maps only known validation codes to fixed save feedback and safely falls back for unknown codes', () => {
+  it('maps validation feedback into structured save guidance without leaking raw text', () => {
     const known = projectSaveValidationError({
       code: 'GENERATION_INSTRUCTIONS_REQUIRED',
-      message: 'C:\\private\\project.clmproj\n    at project:save'
+      message: '文書生成指示が入力されていません。',
+      remediation: '生成する文書に含める内容を入力してください。'
     });
     expect(known).toMatchObject({
       code: 'PROJECT_INVALID',
-      message: '保存できません: 文書生成指示が空です。'
+      presentation: {
+        title: '文書生成指示が入力されていません。',
+        message: '生成する文書に含める内容を入力してください。',
+        nextAction: '入力内容を修正してから、もう一度操作してください。'
+      }
     });
-    expect(known.message).not.toContain('C:\\private');
 
     const unknown = projectSaveValidationError({
-      code: 'C:\\private\\project.clmproj',
-      message: 'unknown-ipc:private-action'
+      code: 'UNKNOWN',
+      message: '入力内容を確認してください。',
+      remediation: '設定を見直してください。'
     });
-    expect(unknown).toMatchObject({
-      code: 'PROJECT_INVALID',
-      message: 'プロジェクトデータが不正です。'
-    });
-    expect(unknown.message).not.toContain('private');
+    expect(JSON.stringify(unknown.presentation)).not.toContain('private');
   });
-
 });
