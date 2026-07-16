@@ -1,9 +1,10 @@
 import { IPC } from '../shared/ipc.js';
 import {
-  GENERIC_USER_MESSAGE,
+  GENERIC_USER_PRESENTATION,
   UserFacingError,
   runIpcOperation
 } from '../shared/ipc-result.js';
+import { userFacingErrors } from '../shared/presentation/ja/index.js';
 import {
   registerElectronIpc,
   type IpcSenderEvent
@@ -49,10 +50,10 @@ export const registerMainIpcBindings = <
         channel: IPC.openFolder,
         operation: (_event: TEvent, rawPath: unknown) => {
           if (typeof rawPath !== 'string') {
-            throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
+            throw new UserFacingError('INVALID_ARGUMENT', userFacingErrors.invalidArgument);
           }
           if (!options.allowedOutputPaths.has(rawPath)) {
-            throw new UserFacingError('OUTPUT_NOT_ALLOWED', 'この場所を開く権限がありません。');
+            throw new UserFacingError('OUTPUT_NOT_ALLOWED', userFacingErrors.outputNotAllowed);
           }
           options.showItemInFolder(rawPath);
         }
@@ -68,7 +69,7 @@ export const registerMainIpcBindings = <
     resolveOwner: options.resolveOwner,
     handlersFor: options.handlersFor,
     ownerUnavailable: () => {
-      throw new UserFacingError('WINDOW_UNAVAILABLE', GENERIC_USER_MESSAGE);
+      throw new UserFacingError('WINDOW_UNAVAILABLE', GENERIC_USER_PRESENTATION);
     }
   });
 };
