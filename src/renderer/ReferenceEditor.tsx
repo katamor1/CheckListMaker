@@ -3,6 +3,12 @@ import type {
   ReferenceDocumentDefinition,
   ReferenceRoleDefinition
 } from '../shared/model.js';
+import {
+  actions,
+  authorityLevelLabels,
+  messages,
+  terminology
+} from '../shared/presentation/ja/index.js';
 import { removeReference, updateReference } from './reference-editor-model.js';
 
 export interface ReferenceEditorProps {
@@ -14,10 +20,10 @@ export interface ReferenceEditorProps {
 }
 
 const authorityOptions: Array<{ value: AuthorityLevel; label: string }> = [
-  { value: 'binding', label: '拘束力あり (binding)' },
-  { value: 'approved', label: '承認済み (approved)' },
-  { value: 'working', label: '作業資料 (working)' },
-  { value: 'reference', label: '参考 (reference)' }
+  { value: 'binding', label: authorityLevelLabels.binding },
+  { value: 'approved', label: authorityLevelLabels.approved },
+  { value: 'working', label: authorityLevelLabels.working },
+  { value: 'reference', label: authorityLevelLabels.reference }
 ];
 
 const updateEffectiveDate = (
@@ -49,15 +55,15 @@ export const ReferenceEditor = ({
     <section className="editor-section" aria-labelledby="references-heading">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">REFERENCES</p>
-          <h3 id="references-heading">参考資料</h3>
-          <p className="section-help">文書は読み取り専用で登録され、権威レベルと優先順位の順に解決されます。</p>
+          <p className="eyebrow">{terminology.referenceDocument}</p>
+          <h3 id="references-heading">{terminology.referenceDocument}</h3>
+          <p className="section-help">参考資料は読み取り専用で登録され、権威レベルと優先順位の順に参照されます。</p>
         </div>
-        <button type="button" onClick={onAdd} disabled={disabled}>参考資料を追加</button>
+        <button type="button" onClick={onAdd} disabled={disabled}>{actions.addReferenceDocument}</button>
       </div>
 
       {references.length === 0 ? (
-        <p className="empty-state">参考資料はまだありません。MD、TXT、DOCX、PDFを複数選択できます。</p>
+        <p className="empty-state">{messages.referencesEmpty}MD、TXT、DOCX、PDFを複数選択できます。</p>
       ) : (
         <div className="editor-stack">
           {references.map((reference) => (
@@ -72,12 +78,12 @@ export const ReferenceEditor = ({
                     {reference.document.format === 'pdf' ? 'PDF・評価のみ' : `${reference.document.format.toUpperCase()}・評価と条件付き修正`}
                   </p>
                 </div>
-                <button type="button" className="danger small" onClick={() => remove(reference.id)} disabled={disabled}>削除</button>
+                <button type="button" className="danger small" onClick={() => remove(reference.id)} disabled={disabled}>{actions.deleteReference}</button>
               </div>
 
               <div className="form-grid two-column">
                 <label className="field">
-                  <span>表示名</span>
+                  <span>参考資料名</span>
                   <input
                     name={`reference-title-${reference.id}`}
                     value={reference.title}
@@ -87,7 +93,7 @@ export const ReferenceEditor = ({
                 </label>
 
                 <label className="field">
-                  <span>用途</span>
+                  <span>参考資料の用途</span>
                   <input
                     name={`reference-purpose-${reference.id}`}
                     value={reference.purpose}
@@ -113,7 +119,7 @@ export const ReferenceEditor = ({
                 </label>
 
                 <label className="field">
-                  <span>優先順位（0～100）</span>
+                  <span>{terminology.referencePriority}（0～100）</span>
                   <input
                     name={`reference-priority-${reference.id}`}
                     type="number"
@@ -130,7 +136,7 @@ export const ReferenceEditor = ({
                 </label>
 
                 <label className="field">
-                  <span>有効日（任意）</span>
+                  <span>適用開始日（任意）</span>
                   <input
                     name={`reference-effective-date-${reference.id}`}
                     type="date"
