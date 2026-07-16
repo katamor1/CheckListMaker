@@ -11,6 +11,7 @@ import {
   actions,
   messages,
   projectModeLabel,
+  repairPolicyLabels,
   statuses,
   terminology
 } from '../shared/presentation/ja/index.js';
@@ -23,13 +24,7 @@ export type WorkspaceSection = 'overview' | 'references' | 'checklist';
 
 export const modeLabel = (mode: ProjectMode): string => projectModeLabel(mode);
 
-const repairPolicyLabel = (policy: RepairPolicy): string => {
-  switch (policy) {
-    case 'auto_fix': return '安全な場合は自動修正';
-    case 'suggest_only': return '修正案のみ';
-    case 'do_not_modify': return '変更・具体案を禁止';
-  }
-};
+const repairPolicyLabel = (policy: RepairPolicy): string => repairPolicyLabels[policy];
 
 export interface ProjectWorkspaceProps {
   project: ProjectDefinition;
