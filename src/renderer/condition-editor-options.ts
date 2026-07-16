@@ -1,22 +1,23 @@
+import { conditionTypeLabels, scopeTypeLabels } from '../shared/presentation/ja/index.js';
 import type { ConditionType, ScopeType } from './checklist-editor-model.js';
 
 export const conditionTypeOptions: Array<{ value: ConditionType; label: string }> = [
-  { value: 'semantic', label: '意味・内容を判断' },
-  { value: 'required_text', label: '必須語句' },
-  { value: 'forbidden_text', label: '禁止語句' },
-  { value: 'number', label: '数値' },
-  { value: 'length_or_count', label: '文字数・件数' },
-  { value: 'date_or_deadline', label: '日付・期限' },
-  { value: 'pattern', label: '書式パターン' },
-  { value: 'one_of', label: '許可値のいずれか' },
-  { value: 'cross_source_consistency', label: '参考資料との整合性' }
+  { value: 'semantic', label: conditionTypeLabels.semantic },
+  { value: 'required_text', label: conditionTypeLabels.required_text },
+  { value: 'forbidden_text', label: conditionTypeLabels.forbidden_text },
+  { value: 'number', label: conditionTypeLabels.number },
+  { value: 'length_or_count', label: conditionTypeLabels.length_or_count },
+  { value: 'date_or_deadline', label: conditionTypeLabels.date_or_deadline },
+  { value: 'pattern', label: conditionTypeLabels.pattern },
+  { value: 'one_of', label: conditionTypeLabels.one_of },
+  { value: 'cross_source_consistency', label: conditionTypeLabels.cross_source_consistency }
 ];
 
 export const scopeTypeOptions: Array<{ value: ScopeType; label: string }> = [
-  { value: 'entire_document', label: '文書全体' },
-  { value: 'section', label: '章・見出し' },
-  { value: 'table', label: '表' },
-  { value: 'semantic_locator', label: '自然言語で指定した箇所' }
+  { value: 'entire_document', label: scopeTypeLabels.entire_document },
+  { value: 'section', label: scopeTypeLabels.section },
+  { value: 'table', label: scopeTypeLabels.table },
+  { value: 'semantic_locator', label: scopeTypeLabels.semantic_locator }
 ];
 
 export const numberOperatorOptions = [
