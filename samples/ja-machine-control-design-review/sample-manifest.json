@@ -2,7 +2,7 @@
   "sampleFormatVersion": "1.0",
   "id": "ja-machine-control-design-review",
   "title": "設備状態監視機能 基本設計レビュー",
-  "description": "既存文書レビューと文書生成を確認する日本語デモ",
+  "description": "最新のElectron GUIで既存文書レビューと文書生成を確認する日本語デモ",
   "language": "ja",
   "entryPoints": {
     "existing_document": {
@@ -30,8 +30,8 @@
       "path": "existing-document/expected-outcomes.json",
       "purpose": "expected_outcomes",
       "mediaType": "application/json",
-      "sha256": "fa8af6807320d901be00e39c725808dd3e72e4c6eff29977f5088985bf6e2292",
-      "sizeBytes": 4435
+      "sha256": "2363ad45349955e06a7a0a7845063f30b42f71c2a23886a25d3a998fbcd9730c",
+      "sizeBytes": 4434
     },
     {
       "path": "existing-document/target/basic-design-before-review.docx",
@@ -44,15 +44,15 @@
       "path": "generation/document-request.json",
       "purpose": "generation_request",
       "mediaType": "application/json",
-      "sha256": "19e28253b07185be668e7caf2ec146a2e352075d8077da119100a03278bdda9c",
-      "sizeBytes": 640
+      "sha256": "57abd612c6004c3f5c78e4c9a872ee706fe274c6d80606794eb9c0c72d108f8e",
+      "sizeBytes": 641
     },
     {
       "path": "README.md",
       "purpose": "documentation",
       "mediaType": "text/markdown",
-      "sha256": "d711162c49a0532c0728cd85c87cb6d9d012de5c17661617b3828ee01e71ab11",
-      "sizeBytes": 2046
+      "sha256": "d370aa2a5e52eb4b320d2b0d8b416fcfbfc2ff51725995bce4ac9d9c8afcce62",
+      "sizeBytes": 4841
     },
     {
       "path": "references/basic-design-template.md",
@@ -124,9 +124,9 @@
     "binding の参考資料を reference より優先する"
   ],
   "demoOperations": [
-    "既存 DOCX を読み込んでレビューする",
-    "修正方針ごとの提案を比較する",
-    "参考資料を根拠として DOCX を生成する",
-    "参考資料が読み取り専用であることを確認する"
+    "Electron GUIで既存DOCXを読み込んでレビューする",
+    "Electron GUIで4参考資料の権威レベルと優先順位を設定する",
+    "Electron GUIで5チェック項目と9条件を構成する",
+    "参考資料を根拠としてDOCXを生成する"
   ]
 }
