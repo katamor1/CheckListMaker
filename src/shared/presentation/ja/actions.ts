@@ -1,0 +1,22 @@
+export const actions = Object.freeze({
+  createExistingProject: '既存文書の検証を開始',
+  createGenerationProject: '文書生成と検証を開始',
+  openProject: 'プロジェクトを開く',
+  saveOverwrite: '上書き保存',
+  saveAs: '名前を付けて保存',
+  selectTargetDocument: '主対象文書を選択',
+  addReferenceDocument: '参考資料を追加',
+  addChecklistItem: 'チェック項目を追加',
+  addCondition: '条件を追加',
+  deleteItem: '項目を削除',
+  deleteCondition: '条件を削除',
+  deleteReference: '参考資料を削除',
+  duplicate: '複製',
+  runPreflight: '事前検査を実行',
+  createCopilotPackage: 'Copilot用ZIPを作成',
+  openExportLocation: '生成したZIPの保存場所を開く',
+  showDetails: '詳細を表示',
+  hideDetails: '詳細を閉じる',
+  close: '閉じる',
+  cancel: 'キャンセル'
+} as const);
