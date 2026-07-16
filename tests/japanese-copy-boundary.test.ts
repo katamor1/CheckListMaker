@@ -21,6 +21,7 @@ describe('Japanese copy source boundary', () => {
       '>REFERENCES<',
       '>CHECKLIST<',
       'LOCAL DOCUMENT VALIDATION PACKAGE BUILDER',
+      '<dt>App</dt>',
       '>保存<',
       '>文書を選択<',
       '生成したZIPを表示'
