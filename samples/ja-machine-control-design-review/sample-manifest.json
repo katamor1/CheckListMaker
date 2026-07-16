@@ -53,14 +53,14 @@
       "path": "projects/document-generation-demo.clmproj",
       "purpose": "project_file",
       "mediaType": "application/vnd.checklistmaker.project+zip",
-      "sha256": "01a3d27194a6be975d0101defd003428ff7396a5f8b6f1c29565ba4a2a16fe12",
+      "sha256": "d9b8b5fe8132a1e2f3f06b96643261d7926de3067d50bb41b1bfe24a66d854bc",
       "sizeBytes": 43549
     },
     {
       "path": "projects/existing-document-demo.clmproj",
       "purpose": "project_file",
       "mediaType": "application/vnd.checklistmaker.project+zip",
-      "sha256": "9080a74a6714122409d31c29cde320f5414456595fe82a6f1eaf153dd2d6b233",
+      "sha256": "4c711c92bdebcaeb96f7fc219e98838a89370d69b1ed3019779ae88e6495e649",
       "sizeBytes": 77950
     },
     {
