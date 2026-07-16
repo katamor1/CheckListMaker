@@ -8,6 +8,7 @@
     "existing_document": {
       "targetPath": "existing-document/target/basic-design-before-review.docx",
       "expectedOutcomesPath": "existing-document/expected-outcomes.json",
+      "projectPath": "projects/existing-document-demo.clmproj",
       "referenceIds": [
         "REF-001",
         "REF-002",
@@ -17,6 +18,7 @@
     },
     "document_generation": {
       "requestPath": "generation/document-request.json",
+      "projectPath": "projects/document-generation-demo.clmproj",
       "referenceIds": [
         "REF-001",
         "REF-002",
@@ -46,6 +48,20 @@
       "mediaType": "application/json",
       "sha256": "57abd612c6004c3f5c78e4c9a872ee706fe274c6d80606794eb9c0c72d108f8e",
       "sizeBytes": 641
+    },
+    {
+      "path": "projects/document-generation-demo.clmproj",
+      "purpose": "project_file",
+      "mediaType": "application/vnd.checklistmaker.project+zip",
+      "sha256": "01a3d27194a6be975d0101defd003428ff7396a5f8b6f1c29565ba4a2a16fe12",
+      "sizeBytes": 43549
+    },
+    {
+      "path": "projects/existing-document-demo.clmproj",
+      "purpose": "project_file",
+      "mediaType": "application/vnd.checklistmaker.project+zip",
+      "sha256": "9080a74a6714122409d31c29cde320f5414456595fe82a6f1eaf153dd2d6b233",
+      "sizeBytes": 77950
     },
     {
       "path": "README.md",

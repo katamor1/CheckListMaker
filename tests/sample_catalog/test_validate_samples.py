@@ -68,6 +68,19 @@ class ValidatorCoreTests(unittest.TestCase):
             "sampleFormatVersion": "1.0",
             "title": "サンプル",
         }
+        project_file = b"PK\x03\x04existing project\n"
+        (sample_directory / "existing.clmproj").write_bytes(project_file)
+
+        manifest["entryPoints"]["existing_document"]["projectPath"] = (
+            "existing.clmproj"
+        )
+        manifest["files"].append({
+            "mediaType": "application/vnd.checklistmaker.project+zip",
+            "path": "existing.clmproj",
+            "purpose": "project_file",
+            "sha256": hashlib.sha256(project_file).hexdigest(),
+            "sizeBytes": len(project_file),
+        })
         self.write_json(sample_directory / "sample-manifest.json", manifest)
 
         samples_directory = root / "samples"
@@ -387,7 +400,7 @@ class ValidatorCoreTests(unittest.TestCase):
         self.assertEqual(
             "ERROR PROPERTY_UNKNOWN catalog#/0/bad\\n\\x1b[31m: "
             "property is not allowed\n"
-            "FAILED samples=1 files=2 errors=1\n",
+            "FAILED samples=1 files=3 errors=1\n",
             stderr.getvalue(),
         )
         self.assertNotIn("\x1b", stderr.getvalue())
@@ -455,6 +468,19 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
             "sampleFormatVersion": "1.0",
             "title": "サンプル",
         }
+        project_file = b"PK\x03\x04existing project\n"
+        (sample_directory / "existing.clmproj").write_bytes(project_file)
+
+        manifest["entryPoints"]["existing_document"]["projectPath"] = (
+            "existing.clmproj"
+        )
+        manifest["files"].append({
+            "mediaType": "application/vnd.checklistmaker.project+zip",
+            "path": "existing.clmproj",
+            "purpose": "project_file",
+            "sha256": hashlib.sha256(project_file).hexdigest(),
+            "sizeBytes": len(project_file),
+        })
         self.write_json(sample_directory / "sample-manifest.json", manifest)
         self.write_json(root / "samples" / "catalog.json", [{
             "description": "説明",
@@ -557,6 +583,20 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
             "application/json",
             payload,
         )
+        project_file = b"PK\x03\x04generation project\n"
+        self.add_payload(
+            root,
+            "generation.clmproj",
+            "project_file",
+            "application/vnd.checklistmaker.project+zip",
+            project_file,
+        )
+
+        entry_point = {
+            "projectPath": "generation.clmproj",
+            "referenceIds": [],
+            "requestPath": "request.json",
+        }
         self.mutate_catalog(
             root,
             lambda catalog: catalog[0]["modes"].append(
@@ -565,10 +605,7 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
         self.mutate_manifest(
             root,
             lambda manifest: manifest["entryPoints"].update({
-                "document_generation": {
-                    "referenceIds": [],
-                    "requestPath": "request.json",
-                }
+                "document_generation": entry_point
             }),
         )
 
@@ -607,7 +644,7 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
 
         self.assertEqual(0, report.exit_code)
         self.assertEqual(1, report.sample_count)
-        self.assertEqual(2, report.file_count)
+        self.assertEqual(3, report.file_count)
         self.assertEqual((), report.issues)
 
     def test_both_entry_point_shapes_and_references_pass(self):
@@ -623,7 +660,7 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
         report = validate_catalog(root)
 
         self.assertEqual(0, report.exit_code)
-        self.assertEqual(4, report.file_count)
+        self.assertEqual(6, report.file_count)
         self.assertEqual((), report.issues)
 
     def test_schema_matches_public_validator_constants(self):
@@ -641,7 +678,7 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
         })
         expected_purposes = frozenset({
             "documentation", "target_document", "expected_outcomes",
-            "generation_request", "reference_document",
+            "generation_request", "reference_document", "project_file",
         })
         expected_media = {
             ".md": "text/markdown",
@@ -652,6 +689,7 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
                 "application/vnd.openxmlformats-officedocument."
                 "wordprocessingml.document"
             ),
+            ".clmproj": "application/vnd.checklistmaker.project+zip",
         }
         expected_authority_levels = frozenset({
             "reference", "working", "approved", "binding",
@@ -759,6 +797,34 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
                 self.add_reference(root)
                 self.mutate_manifest(root, mutation)
                 self.assert_issue(root, expected_code)
+
+    def test_each_enabled_mode_requires_a_project_file(self):
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"][
+                "existing_document"].pop("projectPath"),
+        )
+        self.assert_issue(root, "PROPERTY_MISSING")
+
+        root = self.make_repo()
+        self.add_generation_mode(root)
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"][
+                "document_generation"].pop("projectPath"),
+        )
+        self.assert_issue(root, "PROPERTY_MISSING")
+
+    def test_project_entry_point_requires_project_file_purpose(self):
+        root = self.make_repo()
+        self.mutate_manifest(
+            root,
+            lambda manifest: manifest["entryPoints"][
+                "existing_document"].update(
+                    {"projectPath": "target.txt"}),
+        )
+        self.assert_issue(root, "ENTRY_POINT_FILE_UNKNOWN")
 
     def test_catalog_rejects_wrong_json_types(self):
         cases = (
@@ -1262,7 +1328,7 @@ class ValidatorContractAndMutationTests(unittest.TestCase):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             exit_code = main(("--root", str(root)))
         self.assertEqual(0, exit_code)
-        self.assertEqual("OK samples=1 files=2\n", stdout.getvalue())
+        self.assertEqual("OK samples=1 files=3\n", stdout.getvalue())
         self.assertEqual("", stderr.getvalue())
 
         self.mutate_manifest(
@@ -1334,20 +1400,28 @@ class RegisteredSampleCatalogTests(unittest.TestCase):
     ]
     EXPECTED_PAYLOADS = {
         "existing-document/expected-outcomes.json": (
-            4435,
-            "fa8af6807320d901be00e39c725808dd3e72e4c6eff29977f5088985bf6e2292",
+            4434,
+            "2363ad45349955e06a7a0a7845063f30b42f71c2a23886a25d3a998fbcd9730c",
         ),
         "existing-document/target/basic-design-before-review.docx": (
             37366,
             "9e98b7d5485f321c94e18ed0c4da9367eb650da9a768de0cf68622fbf86107bc",
         ),
         "generation/document-request.json": (
-            640,
-            "19e28253b07185be668e7caf2ec146a2e352075d8077da119100a03278bdda9c",
+            641,
+            "57abd612c6004c3f5c78e4c9a872ee706fe274c6d80606794eb9c0c72d108f8e",
+        ),
+        "projects/document-generation-demo.clmproj": (
+            43549,
+            "01a3d27194a6be975d0101defd003428ff7396a5f8b6f1c29565ba4a2a16fe12",
+        ),
+        "projects/existing-document-demo.clmproj": (
+            77950,
+            "9080a74a6714122409d31c29cde320f5414456595fe82a6f1eaf153dd2d6b233",
         ),
         "README.md": (
-            2046,
-            "d711162c49a0532c0728cd85c87cb6d9d012de5c17661617b3828ee01e71ab11",
+            4841,
+            "d370aa2a5e52eb4b320d2b0d8b416fcfbfc2ff51725995bce4ac9d9c8afcce62",
         ),
         "references/basic-design-template.md": (
             1377,
@@ -1422,7 +1496,7 @@ class RegisteredSampleCatalogTests(unittest.TestCase):
                 exit_code = main(("--root", str(self.REPOSITORY_ROOT)))
 
         self.assertEqual(0, exit_code)
-        self.assertEqual("OK samples=1 files=8\n", stdout.getvalue())
+        self.assertEqual("OK samples=1 files=10\n", stdout.getvalue())
         self.assertEqual("", stderr.getvalue())
 
     def test_validator_detects_mutation_without_rewriting_any_bytes(self):

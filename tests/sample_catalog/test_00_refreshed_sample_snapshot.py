@@ -1,8 +1,8 @@
 """Keep registered-sample byte snapshots aligned with the current demo.
 
 The original catalog tests intentionally pin exact payload bytes.  This module
-is imported first by unittest discovery and updates the three payload snapshots
-revised for the Electron GUI guide without weakening the validator contract.
+is imported first by unittest discovery and refreshes payload snapshots for the
+Electron GUI guide and generated projects without weakening the contract.
 """
 
 import test_sample_content
@@ -17,6 +17,14 @@ REFRESHED_PAYLOADS = {
     "generation/document-request.json": (
         641,
         "57abd612c6004c3f5c78e4c9a872ee706fe274c6d80606794eb9c0c72d108f8e",
+    ),
+    "projects/document-generation-demo.clmproj": (
+        43549,
+        "01a3d27194a6be975d0101defd003428ff7396a5f8b6f1c29565ba4a2a16fe12",
+    ),
+    "projects/existing-document-demo.clmproj": (
+        77950,
+        "9080a74a6714122409d31c29cde320f5414456595fe82a6f1eaf153dd2d6b233",
     ),
     "README.md": (
         4841,
@@ -45,6 +53,14 @@ def test_manifest_matches_payload_hashes_and_reference_metadata(self):
     self.assertEqual(
         [item[0] for item in self.EXPECTED_REFERENCES],
         manifest["entryPoints"]["document_generation"]["referenceIds"],
+    )
+    self.assertEqual(
+        "projects/existing-document-demo.clmproj",
+        manifest["entryPoints"]["existing_document"]["projectPath"],
+    )
+    self.assertEqual(
+        "projects/document-generation-demo.clmproj",
+        manifest["entryPoints"]["document_generation"]["projectPath"],
     )
     for entry in manifest["files"]:
         with self.subTest(path=entry["path"]):

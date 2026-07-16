@@ -289,6 +289,14 @@ class SampleContentTests(unittest.TestCase):
             [item[0] for item in self.EXPECTED_REFERENCES],
             manifest["entryPoints"]["document_generation"]["referenceIds"],
         )
+        self.assertEqual(
+            "projects/existing-document-demo.clmproj",
+            manifest["entryPoints"]["existing_document"]["projectPath"],
+        )
+        self.assertEqual(
+            "projects/document-generation-demo.clmproj",
+            manifest["entryPoints"]["document_generation"]["projectPath"],
+        )
         for entry in manifest["files"]:
             with self.subTest(path=entry["path"]):
                 path = self.SCENARIO_ROOT / entry["path"]

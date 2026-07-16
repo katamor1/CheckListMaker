@@ -25,7 +25,7 @@ MANIFEST_KEYS = frozenset({
 MODES = frozenset({"existing_document", "document_generation"})
 PURPOSES = frozenset({
     "documentation", "target_document", "expected_outcomes",
-    "generation_request", "reference_document",
+    "generation_request", "reference_document", "project_file",
 })
 MEDIA_BY_SUFFIX = {
     ".md": "text/markdown",
@@ -36,6 +36,7 @@ MEDIA_BY_SUFFIX = {
         "application/vnd.openxmlformats-officedocument."
         "wordprocessingml.document"
     ),
+    ".clmproj": "application/vnd.checklistmaker.project+zip",
 }
 AUTHORITY_LEVELS = frozenset({
     "reference", "working", "approved", "binding",
@@ -58,18 +59,23 @@ _REFERENCE_KEYS = frozenset({
 })
 _ENTRY_POINT_KEYS = {
     "existing_document": frozenset({
-        "targetPath", "expectedOutcomesPath", "referenceIds",
+        "targetPath", "expectedOutcomesPath", "projectPath",
+        "referenceIds",
     }),
     "document_generation": frozenset({
-        "requestPath", "referenceIds",
+        "requestPath", "projectPath", "referenceIds",
     }),
 }
 _ENTRY_POINT_FILES = {
     "existing_document": (
         ("targetPath", "target_document"),
         ("expectedOutcomesPath", "expected_outcomes"),
+        ("projectPath", "project_file"),
     ),
-    "document_generation": (("requestPath", "generation_request"),),
+    "document_generation": (
+        ("requestPath", "generation_request"),
+        ("projectPath", "project_file"),
+    ),
 }
 _CHUNK_SIZE = 1024 * 1024
 _DRIVE_PREFIX = re.compile(r"^[A-Za-z]:")
