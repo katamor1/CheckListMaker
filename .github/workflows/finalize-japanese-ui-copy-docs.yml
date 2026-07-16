@@ -1,0 +1,113 @@
+name: Finalize Japanese UI copy documentation
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/finalize-japanese-ui-copy-docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare final product diff
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath '.github/workflows/export-japanese-ui-source.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath '.github/workflows/diagnose-sample-projects.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath '.github/workflows/finalize-japanese-ui-copy.yml' -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath '.github/workflows/finalize-japanese-ui-copy-docs.yml' -Force
+
+          @'
+          from pathlib import Path
+
+          path = Path('README.md')
+          text = path.read_text(encoding='utf-8')
+          heading = '## 日本語UI文言の検証'
+          if heading not in text:
+              block = '''## 日本語UI文言の検証
+
+          Electron画面、通知、事前検査、ファイルダイアログ、利用者向けエラーの日本語表現は、次の設計に基づいて管理しています。
+
+          - [日本語UI文言の設計仕様](docs/superpowers/specs/2026-07-16-electron-japanese-ui-copy-design.md)
+          - [日本語UI文言の実装計画](docs/superpowers/plans/2026-07-16-electron-japanese-ui-copy.md)
+          - [Windows手動確認チェックリスト](docs/testing/electron-japanese-ui-copy-checklist.md)
+
+          型検査、単体テスト、サンプル検証、本番ビルドは自動化しています。キーボード操作と100％・150％・200％表示倍率の確認は、Windows 11上でチェックリストへ実施記録を残してください。手動確認が完了するまでは、表示上の受入試験が完了したとは扱いません。
+          '''
+              anchor = '## 開発方針'
+              if anchor in text:
+                  text = text.replace(anchor, block + '\n\n' + anchor, 1)
+              else:
+                  text = text.rstrip() + '\n\n' + block + '\n'
+              path.write_text(text.replace('\r\n', '\n'), encoding='utf-8', newline='\n')
+          '@ | python -
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Run complete automated gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run typecheck
+          npm test
+          npm run verify:samples
+          npm run build
+
+      - name: Audit approved boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git fetch origin main
+
+          $forbidden = 'LOCAL DOCUMENT VALIDATION PACKAGE BUILDER|>PROJECT<|>PREFLIGHT<|>OVERVIEW<|>REFERENCES<|>CHECKLIST<' 
+          $matches = Get-ChildItem src/renderer,src/main -Recurse -File | Select-String -Pattern $forbidden
+          if ($matches) {
+            $matches | ForEach-Object { Write-Error "$($_.Path):$($_.LineNumber): $($_.Line)" }
+            throw '利用者向け英語装飾見出しが残っています。'
+          }
+
+          git diff --exit-code origin/main...HEAD -- src/shared/model.ts src/main/archive.ts src/main/project-store.ts src/main/package-generator.ts samples
+          if ($LASTEXITCODE -ne 0) { throw '表示文言の対象外である契約ファイルに差分があります。' }
+
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check に失敗しました。' }
+
+      - name: Commit verified finalization
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name 'checklistmaker-agent'
+          git config user.email 'checklistmaker-agent@users.noreply.github.com'
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'docs: link Japanese UI copy verification guidance'
+            git push origin HEAD:agent/japanese-ui-copy
+          }
