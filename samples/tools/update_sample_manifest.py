@@ -38,6 +38,14 @@ _FILE_METADATA = {
         "generation_request",
         "application/json",
     ),
+    "projects/document-generation-demo.clmproj": (
+        "project_file",
+        "application/vnd.checklistmaker.project+zip",
+    ),
+    "projects/existing-document-demo.clmproj": (
+        "project_file",
+        "application/vnd.checklistmaker.project+zip",
+    ),
     "README.md": ("documentation", "text/markdown"),
     "references/basic-design-template.md": (
         "reference_document",
@@ -71,10 +79,12 @@ _FIXED_METADATA = {
             "expectedOutcomesPath": (
                 "existing-document/expected-outcomes.json"
             ),
+            "projectPath": "projects/existing-document-demo.clmproj",
             "referenceIds": ["REF-001", "REF-002", "REF-003", "REF-004"],
         },
         "document_generation": {
             "requestPath": "generation/document-request.json",
+            "projectPath": "projects/document-generation-demo.clmproj",
             "referenceIds": ["REF-001", "REF-002", "REF-003", "REF-004"],
         },
     },
@@ -119,10 +129,10 @@ _FIXED_METADATA = {
         "binding の参考資料を reference より優先する",
     ],
     "demoOperations": [
-        "既存 DOCX を読み込んでレビューする",
-        "修正方針ごとの提案を比較する",
-        "参考資料を根拠として DOCX を生成する",
-        "参考資料が読み取り専用であることを確認する",
+        "Electron GUIで既存DOCXを読み込んでレビューする",
+        "Electron GUIで4参考資料の権威レベルと優先順位を設定する",
+        "Electron GUIで5チェック項目と9条件を構成する",
+        "参考資料を根拠としてDOCXを生成する",
     ],
 }
 

@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+from docx import Document
+
 
 class SampleContentTests(unittest.TestCase):
     REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -166,7 +168,18 @@ class SampleContentTests(unittest.TestCase):
             "`outputs/result.json`として作成",
         ):
             self.assertIn(phrase, text)
-        self.assertIn("編集済みの`.clmproj`または`.clmcheck`を同梱しません", text)
+        for phrase in (
+            "完成済みプロジェクトから始める",
+            "projects/existing-document-demo.clmproj",
+            "projects/document-generation-demo.clmproj",
+            "名前を付けて保存",
+            "詳細入力手順",
+        ):
+            self.assertIn(phrase, text)
+        self.assertNotIn(
+            "編集済みの`.clmproj`または`.clmcheck`を同梱しません",
+            text,
+        )
         self.assertIn("四つの参考資料は常に読み取り専用", text)
         self.assertIn("PDFである`quality-assurance-policy.pdf`は評価と参照にだけ使用", text)
         self.assertIn("AIへの入力ではなく", text)
@@ -280,7 +293,10 @@ class SampleContentTests(unittest.TestCase):
         manifest = self.read_json(self.SCENARIO_ROOT / "sample-manifest.json")
         self.assertEqual("1.0", manifest["sampleFormatVersion"])
         self.assertEqual("ja-machine-control-design-review", manifest["id"])
-        self.assertIn("最新のElectron GUI", manifest["description"])
+        self.assertEqual(
+            "既存文書レビューと文書生成を確認する日本語デモ",
+            manifest["description"],
+        )
         self.assertEqual(
             [item[0] for item in self.EXPECTED_REFERENCES],
             manifest["entryPoints"]["existing_document"]["referenceIds"],
@@ -288,6 +304,14 @@ class SampleContentTests(unittest.TestCase):
         self.assertEqual(
             [item[0] for item in self.EXPECTED_REFERENCES],
             manifest["entryPoints"]["document_generation"]["referenceIds"],
+        )
+        self.assertEqual(
+            "projects/existing-document-demo.clmproj",
+            manifest["entryPoints"]["existing_document"]["projectPath"],
+        )
+        self.assertEqual(
+            "projects/document-generation-demo.clmproj",
+            manifest["entryPoints"]["document_generation"]["projectPath"],
         )
         for entry in manifest["files"]:
             with self.subTest(path=entry["path"]):
@@ -322,6 +346,13 @@ class SampleContentTests(unittest.TestCase):
             "`COND-01`～`COND-09`",
             "JSONではキー名が`instructions`",
             "`outputs/result.json`",
+            "## 1. 5分クイックデモ",
+            "existing-document-demo.clmproj",
+            "document-generation-demo.clmproj",
+            "`プロジェクトを開く`",
+            "`名前を付けて保存`",
+            "エラー0・警告0",
+            "## 6. 既存文書レビュー・プロジェクトの作成",
         ):
             self.assertIn(phrase, text)
         for obsolete in (
@@ -332,6 +363,36 @@ class SampleContentTests(unittest.TestCase):
             "Plan 3",
         ):
             self.assertNotIn(obsolete, text)
+
+    def test_word_guide_contains_the_full_sample_quick_start(self):
+        document = Document(
+            self.REPOSITORY_ROOT /
+            "docs/user-guide/samples-gui-demo.docx"
+        )
+        text_parts = [paragraph.text for paragraph in document.paragraphs]
+        for table in document.tables:
+            for row in table.rows:
+                text_parts.extend(cell.text for cell in row.cells)
+        text = "\n".join(text_parts)
+        for phrase in (
+            "5分クイックデモ",
+            "existing-document-demo.clmproj",
+            "document-generation-demo.clmproj",
+            "名前を付けて保存",
+            "エラー0・警告0",
+        ):
+            self.assertIn(phrase, text)
+
+    def test_samples_readme_explains_project_and_result_boundaries(self):
+        text = self.read(self.REPOSITORY_ROOT / "samples/README.md")
+        for phrase in (
+            "existing-document-demo.clmproj",
+            "document-generation-demo.clmproj",
+            "`.clmcheck`",
+            "`result.json`",
+        ):
+            self.assertIn(phrase, text)
+        self.assertIn("暗号化されません", text)
 
 
 if __name__ == "__main__":

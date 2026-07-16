@@ -23,6 +23,8 @@ class SampleManifestBuilderTests(unittest.TestCase):
         "existing-document/expected-outcomes.json",
         "existing-document/target/basic-design-before-review.docx",
         "generation/document-request.json",
+        "projects/document-generation-demo.clmproj",
+        "projects/existing-document-demo.clmproj",
         "README.md",
         "references/basic-design-template.md",
         "references/control-terminology.txt",
@@ -45,6 +47,14 @@ class SampleManifestBuilderTests(unittest.TestCase):
         "generation/document-request.json": (
             "generation_request",
             "application/json",
+        ),
+        "projects/document-generation-demo.clmproj": (
+            "project_file",
+            "application/vnd.checklistmaker.project+zip",
+        ),
+        "projects/existing-document-demo.clmproj": (
+            "project_file",
+            "application/vnd.checklistmaker.project+zip",
         ),
         "README.md": ("documentation", "text/markdown"),
         "references/basic-design-template.md": (
@@ -72,10 +82,12 @@ class SampleManifestBuilderTests(unittest.TestCase):
             "expectedOutcomesPath": (
                 "existing-document/expected-outcomes.json"
             ),
+            "projectPath": "projects/existing-document-demo.clmproj",
             "referenceIds": ["REF-001", "REF-002", "REF-003", "REF-004"],
         },
         "document_generation": {
             "requestPath": "generation/document-request.json",
+            "projectPath": "projects/document-generation-demo.clmproj",
             "referenceIds": ["REF-001", "REF-002", "REF-003", "REF-004"],
         },
     }
@@ -86,10 +98,10 @@ class SampleManifestBuilderTests(unittest.TestCase):
         "binding の参考資料を reference より優先する",
     ]
     EXPECTED_OPERATIONS = [
-        "既存 DOCX を読み込んでレビューする",
-        "修正方針ごとの提案を比較する",
-        "参考資料を根拠として DOCX を生成する",
-        "参考資料が読み取り専用であることを確認する",
+        "Electron GUIで既存DOCXを読み込んでレビューする",
+        "Electron GUIで4参考資料の権威レベルと優先順位を設定する",
+        "Electron GUIで5チェック項目と9条件を構成する",
+        "参考資料を根拠としてDOCXを生成する",
     ]
     EXPECTED_REFERENCES = [
         {

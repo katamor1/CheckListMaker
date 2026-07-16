@@ -70,6 +70,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python samples/validate_samples.py --root . 2>&1 | Tee-Object -FilePath artifacts/ci/sample-validation.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run samples:projects:check 2>&1 | Tee-Object -FilePath artifacts/ci/sample-projects.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build production application
         shell: pwsh
