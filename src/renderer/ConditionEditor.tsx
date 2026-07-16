@@ -1,4 +1,5 @@
 import type { ConditionDefinition } from '../shared/model.js';
+import { actions } from '../shared/presentation/ja/index.js';
 import { changeConditionType, type ConditionType } from './checklist-editor-model.js';
 import { ConditionFields } from './ConditionFields.js';
 import { conditionTypeOptions } from './condition-editor-options.js';
@@ -45,13 +46,13 @@ export const ConditionEditor = ({
         <div className="inline-actions">
           <button type="button" className="secondary small" onClick={onMoveUp} disabled={disabled || !canMoveUp} aria-label={`${condition.id}を上へ移動`}>↑</button>
           <button type="button" className="secondary small" onClick={onMoveDown} disabled={disabled || !canMoveDown} aria-label={`${condition.id}を下へ移動`}>↓</button>
-          <button type="button" className="danger small" onClick={remove} disabled={disabled}>条件を削除</button>
+          <button type="button" className="danger small" onClick={remove} disabled={disabled}>{actions.deleteCondition}</button>
         </div>
       </div>
 
       <div className="form-grid two-column">
         <label className="field full-width">
-          <span>条件タイプ</span>
+          <span>条件の種類</span>
           <select
             name={`condition-type-${condition.id}`}
             value={condition.type}
