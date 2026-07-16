@@ -7,6 +7,10 @@ on:
     paths:
       - .github/gui-sample-refresh/**
       - .github/workflows/materialize-gui-sample-refresh.yml
+  pull_request:
+    paths:
+      - .github/gui-sample-refresh/**
+      - .github/workflows/materialize-gui-sample-refresh.yml
 
 permissions:
   contents: write
@@ -20,7 +24,7 @@ jobs:
       - name: Check out refresh branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Decode and apply reviewed payload
@@ -63,4 +67,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'docs: refresh Electron GUI sample guide'
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
