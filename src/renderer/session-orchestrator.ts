@@ -59,7 +59,7 @@ export const normalizeRendererError = (
   if (
     candidate['brand'] !== RENDERER_ERROR_BRAND ||
     typeof candidate['code'] !== 'string' ||
-    !KNOWN_USER_ERROR_CODES.has(candidate['code'] as never) ||
+    !KNOWN_USER_ERROR_CODES.has(candidate['code']) ||
     !isUserFacingErrorPresentation(candidate['presentation'])
   ) return error;
   return {
@@ -85,6 +85,9 @@ export const safeRendererError = (error: unknown): RendererUserFacingError => {
     presentation: GENERIC_USER_PRESENTATION
   };
 };
+
+export const safeRendererErrorMessage = (error: unknown): string =>
+  safeRendererError(error).presentation.message;
 
 export class RendererSessionOrchestrator {
   constructor(private readonly options: RendererSessionOrchestratorOptions) {}
