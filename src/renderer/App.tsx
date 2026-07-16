@@ -264,7 +264,7 @@ export const App = () => {
         </div>
         {versions ? (
           <dl className="versions" aria-label={terminology.versionInformation}>
-            <div><dt>App</dt><dd>{versions.application}</dd></div>
+            <div><dt>アプリ</dt><dd>{versions.application}</dd></div>
             <div><dt>Electron</dt><dd>{versions.electron}</dd></div>
           </dl>
         ) : null}
