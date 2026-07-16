@@ -1,4 +1,5 @@
 import type { AuthorityLevel, ReferenceRoleDefinition } from '../shared/model.js';
+import { authorityLevelLabels } from '../shared/presentation/ja/index.js';
 import { setOptionalText } from './checklist-editor-shared.js';
 
 const nextRoleId = (roles: readonly ReferenceRoleDefinition[]): string => {
@@ -39,7 +40,7 @@ export const ReferenceRoleEditor = ({ roles, disabled, onChange }: ReferenceRole
   return (
     <details className="role-editor">
       <summary>参考資料ロール（{roles.length}件）</summary>
-      <p className="section-help">必須となる資料の役割を定義し、「参考資料」タブで実ファイルへ割り当てます。</p>
+      <p className="section-help">必須となる参考資料の役割を定義し、「参考資料」タブで実ファイルへ割り当てます。</p>
       <div className="actions compact-actions">
         <button type="button" className="secondary" onClick={add} disabled={disabled}>ロールを追加</button>
       </div>
@@ -51,7 +52,7 @@ export const ReferenceRoleEditor = ({ roles, disabled, onChange }: ReferenceRole
             <article className="role-card" key={role.roleId}>
               <div className="editor-card-heading compact-heading">
                 <span className="id-badge">{role.roleId}</span>
-                <button type="button" className="danger small" onClick={() => remove(role.roleId)} disabled={disabled}>削除</button>
+                <button type="button" className="danger small" onClick={() => remove(role.roleId)} disabled={disabled}>ロールを削除</button>
               </div>
               <div className="form-grid two-column">
                 <label className="field">
@@ -64,7 +65,7 @@ export const ReferenceRoleEditor = ({ roles, disabled, onChange }: ReferenceRole
                   />
                 </label>
                 <label className="field">
-                  <span>推奨権威レベル</span>
+                  <span>推奨する権威レベル</span>
                   <select
                     name={`reference-role-authority-${role.roleId}`}
                     value={role.recommendedAuthorityLevel}
@@ -74,10 +75,10 @@ export const ReferenceRoleEditor = ({ roles, disabled, onChange }: ReferenceRole
                     }))}
                     disabled={disabled}
                   >
-                    <option value="binding">binding</option>
-                    <option value="approved">approved</option>
-                    <option value="working">working</option>
-                    <option value="reference">reference</option>
+                    <option value="binding">{authorityLevelLabels.binding}</option>
+                    <option value="approved">{authorityLevelLabels.approved}</option>
+                    <option value="working">{authorityLevelLabels.working}</option>
+                    <option value="reference">{authorityLevelLabels.reference}</option>
                   </select>
                 </label>
                 <label className="field full-width">
@@ -97,7 +98,7 @@ export const ReferenceRoleEditor = ({ roles, disabled, onChange }: ReferenceRole
                     onChange={(event) => update(role.roleId, (current) => ({ ...current, required: event.currentTarget.checked }))}
                     disabled={disabled}
                   />
-                  <span>このロールの資料を必須にする</span>
+                  <span>このロールの参考資料を必須にする</span>
                 </label>
               </div>
             </article>
