@@ -1,0 +1,149 @@
+name: Finalize Japanese UI copy implementation
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/finalize-japanese-ui-copy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git and integrate current main
+        shell: pwsh
+        run: |
+          git config user.name 'checklistmaker-ci'
+          git config user.email 'checklistmaker-ci@users.noreply.github.com'
+          git fetch origin main
+          git merge --no-edit origin/main
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Build modules and refresh deterministic sample projects
+        shell: pwsh
+        run: |
+          npm run build
+          node samples/tools/sample-projects.mjs --write
+          node samples/tools/sample-projects.mjs --check
+
+      - name: Type-check
+        shell: pwsh
+        run: npm run typecheck
+
+      - name: Run Electron tests
+        shell: pwsh
+        run: npm test
+
+      - name: Validate reusable sample catalog
+        shell: pwsh
+        run: npm run verify:samples
+
+      - name: Rebuild production application
+        shell: pwsh
+        run: npm run build
+
+      - name: Verify copy-only compatibility boundary
+        shell: pwsh
+        run: |
+          git diff --exit-code origin/main...HEAD -- src/shared/model.ts src/main/archive.ts src/main/project-store.ts src/main/package-generator.ts
+          git diff --exit-code origin/main...HEAD -- samples ':!samples/ja-machine-control-design-review/projects/*.clmproj'
+
+      - name: Update documentation and automated gate record
+        shell: pwsh
+        run: |
+          @'
+          import { readFile, writeFile, mkdir } from 'node:fs/promises';
+          const readmePath = 'README.md';
+          let readme = await readFile(readmePath, 'utf8');
+          const marker = '## 日本語UI文言の検証';
+          if (!readme.includes(marker)) {
+            readme = readme.trimEnd() + `\n\n${marker}\n\n` +
+              '- [日本語UI文言設計](docs/superpowers/specs/2026-07-16-electron-japanese-ui-copy-design.md)\n' +
+              '- [Windows目視確認チェックリスト](docs/testing/electron-japanese-ui-copy-checklist.md)\n\n' +
+              '自動検証では型検査、Vitest、サンプル検証、本番ビルドを確認します。' +
+              'キーボード操作と100％、150％、200％表示倍率は、チェックリストへ実機証跡を記録するまで未完了です。\n';
+            await writeFile(readmePath, readme, 'utf8');
+          }
+          await mkdir('docs/implementation', { recursive: true });
+          const sha = process.env.GITHUB_SHA ?? 'unknown';
+          const lines = [
+            '# Electron版 日本語UI文言 自動検証記録',
+            '',
+            `- 実行元コミット: \`${sha}\``,
+            `- 実行日: ${new Date().toISOString()}`,
+            '- 実行環境: GitHub Actions / Windows',
+            '- 結果: 自動ゲート合格',
+            '',
+            '## 合格した工程',
+            '',
+            '- `npm run typecheck`',
+            '- `npm test`',
+            '- `npm run verify:samples`',
+            '- `npm run build`',
+            '- サンプルプロジェクトの再生成・決定論的一致確認',
+            '- 契約影響ファイルの差分確認',
+            '',
+            '## 未完了の手動ゲート',
+            '',
+            '- Windows 11実機でのキーボード操作',
+            '- 100％、150％、200％表示倍率での目視確認',
+            '- 長い日本語エラー文とダイアログの表示確認',
+            '',
+            '手動ゲートは `docs/testing/electron-japanese-ui-copy-checklist.md` に証跡を記録するまで完了扱いにしません。',
+            ''
+          ];
+          await writeFile('docs/implementation/2026-07-16-japanese-ui-automated-gate.md', lines.join('\n'), 'utf8');
+          '@ | Set-Content -LiteralPath "$env:RUNNER_TEMP/update-docs.mjs" -Encoding utf8
+          node "$env:RUNNER_TEMP/update-docs.mjs"
+
+      - name: Remove temporary diagnostic workflows and reports
+        shell: pwsh
+        run: |
+          $paths = @(
+            '.github/workflows/export-japanese-ui-source.yml',
+            '.github/workflows/diagnose-japanese-ui-tests.yml',
+            '.github/workflows/refresh-japanese-ui-sample-projects.yml',
+            '.github/workflows/finalize-japanese-ui-copy.yml',
+            'docs/implementation/japanese-ui-test-diagnostics.md'
+          )
+          foreach ($path in $paths) {
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+          }
+          Get-ChildItem -LiteralPath '.github/workflows' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'diagnose.*sample|sample.*regeneration' } |
+            Remove-Item -Force
+
+      - name: Commit and push verified result
+        shell: pwsh
+        run: |
+          git add -A
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'feat: complete Japanese UI copy implementation'
+          }
+          git push origin HEAD:agent/japanese-ui-copy
