@@ -6,13 +6,18 @@ on:
       - fix/deterministic-sample-project-zips
     paths:
       - .github/workflows/regenerate-deterministic-sample-projects.yml
+  pull_request:
+    paths:
+      - .github/workflows/regenerate-deterministic-sample-projects.yml
 
 permissions:
   contents: write
 
 jobs:
   regenerate:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      (github.event_name != 'pull_request' || github.head_ref == 'fix/deterministic-sample-project-zips')
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
