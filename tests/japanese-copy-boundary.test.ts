@@ -28,6 +28,7 @@ describe('Japanese copy source boundary', () => {
     ]) {
       expect(source).not.toContain(forbidden);
     }
+    expect(source).toContain('<dt>Electron</dt>');
   });
 
   it('does not import presentation copy into persisted or Copilot package contracts', async () => {
