@@ -1,2 +1,29 @@
 @import './base-styles.css';
 @import './editor-styles.css';
+
+button {
+  min-height: 44px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.details-open-label { display: none; }
+details[open] .details-open-label { display: inline; }
+details[open] .details-closed-label { display: none; }
+.issue-details dl,
+.user-error dl { margin: 0.75rem 0 0; }
+.issue-details dd,
+.user-error dd { margin: 0; overflow-wrap: anywhere; }
+.issue-details summary,
+.user-error summary { cursor: pointer; font-weight: 650; }
+.issue-severity { font-size: 0.78rem; font-weight: 750; }
+.user-error {
+  margin: 0 1.25rem 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #b42318;
+  border-radius: 10px;
+  background: #fff4f2;
+  color: #5d1c17;
+}
+.user-error h2 { margin-top: 0; }
+.user-error p { margin: 0.45rem 0; }
