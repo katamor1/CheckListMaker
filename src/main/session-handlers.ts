@@ -1,5 +1,10 @@
 import { IPC } from '../shared/ipc.js';
-import { UserFacingError, type UserFacingErrorPresentation } from '../shared/ipc-result.js';
+import {
+  KNOWN_USER_ERROR_CODES,
+  UserFacingError,
+  isUserFacingErrorPresentation,
+  type UserFacingErrorPresentation
+} from '../shared/ipc-result.js';
 import type {
   ChecklistTemplateDefinition,
   DraftUpdateResult,
@@ -59,7 +64,13 @@ const expectedFailure = async <T>(
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof UserFacingError) throw error;
+    if (
+      error instanceof UserFacingError &&
+      KNOWN_USER_ERROR_CODES.has(error.code) &&
+      isUserFacingErrorPresentation(error.presentation)
+    ) {
+      throw error;
+    }
     throw new UserFacingError(code, presentation, error);
   }
 };
