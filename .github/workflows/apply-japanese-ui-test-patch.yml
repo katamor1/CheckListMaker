@@ -1,0 +1,45 @@
+name: Apply Japanese UI test migration
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .agent/japanese-ui-remaining-tests.patch
+      - .github/workflows/apply-japanese-ui-test-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate and apply patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check .agent/japanese-ui-remaining-tests.patch
+          git apply .agent/japanese-ui-remaining-tests.patch
+          rm -f .agent/japanese-ui-remaining-tests.patch
+          rm -f .github/workflows/apply-japanese-ui-test-patch.yml
+          rm -f .github/workflows/export-japanese-ui-source.yml
+
+      - name: Commit migrated tests and cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'checklistmaker-agent'
+          git config user.email 'checklistmaker-agent@users.noreply.github.com'
+          git add -A
+          git commit -m 'test: migrate remaining structured error expectations'
+          git push origin HEAD:agent/japanese-ui-copy
