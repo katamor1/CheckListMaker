@@ -6,6 +6,9 @@ on:
       - agent/japanese-ui-copy
     paths:
       - .github/workflows/export-japanese-ui-source.yml
+  pull_request:
+    paths:
+      - .github/workflows/export-japanese-ui-source.yml
   workflow_dispatch:
 
 permissions:
@@ -13,6 +16,7 @@ permissions:
 
 jobs:
   export-source:
+    if: github.event_name != 'pull_request' || github.head_ref == 'agent/japanese-ui-copy'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
