@@ -2,7 +2,7 @@
   "sampleFormatVersion": "1.0",
   "id": "ja-machine-control-design-review",
   "title": "設備状態監視機能 基本設計レビュー",
-  "description": "最新のElectron GUIで既存文書レビューと文書生成を確認する日本語デモ",
+  "description": "既存文書レビューと文書生成を確認する日本語デモ",
   "language": "ja",
   "entryPoints": {
     "existing_document": {
