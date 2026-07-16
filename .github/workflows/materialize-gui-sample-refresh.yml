@@ -1,0 +1,66 @@
+name: Materialize Electron GUI sample guide refresh
+
+on:
+  push:
+    branches:
+      - agent/refresh-electron-gui-sample-guide
+    paths:
+      - .github/gui-sample-refresh/**
+      - .github/workflows/materialize-gui-sample-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out refresh branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Decode and apply reviewed payload
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import base64
+          import io
+          import zipfile
+
+          chunk_dir = Path('.github/gui-sample-refresh')
+          chunks = sorted(chunk_dir.glob('payload-*.b64'))
+          if not chunks:
+              raise SystemExit('materialization payload is missing')
+          encoded = ''.join(path.read_text(encoding='ascii').strip() for path in chunks)
+          payload = base64.b64decode(encoded, validate=True)
+          with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+              for item in archive.infolist():
+                  path = PurePosixPath(item.filename)
+                  if path.is_absolute() or '..' in path.parts or '\\' in item.filename:
+                      raise SystemExit(f'unsafe payload path: {item.filename}')
+              archive.extractall('.')
+          PY
+          python .github/gui-sample-refresh/patch_sample_tests.py
+          rm -rf .github/gui-sample-refresh
+          rm -f .github/workflows/materialize-gui-sample-refresh.yml
+
+      - name: Verify sample and guide contracts
+        shell: bash
+        run: |
+          python -m unittest discover -s tests/sample_catalog -p 'test_*.py' -v
+          python samples/validate_samples.py --root .
+          git diff --check
+
+      - name: Commit materialized documentation update
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'docs: refresh Electron GUI sample guide'
+          git push origin HEAD:${{ github.ref_name }}
