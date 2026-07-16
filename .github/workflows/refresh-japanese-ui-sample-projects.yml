@@ -1,0 +1,58 @@
+name: Refresh Japanese UI sample projects
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/refresh-japanese-ui-sample-projects.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Build application modules used by the sample generator
+        shell: pwsh
+        run: npm run build
+
+      - name: Regenerate committed sample projects
+        shell: pwsh
+        run: node samples/tools/sample-projects.mjs --write
+
+      - name: Verify regenerated samples before commit
+        shell: pwsh
+        run: |
+          node samples/tools/sample-projects.mjs --check
+          npm run verify:samples
+
+      - name: Commit regenerated sample projects
+        shell: pwsh
+        run: |
+          git config user.name 'checklistmaker-ci'
+          git config user.email 'checklistmaker-ci@users.noreply.github.com'
+          git add samples/ja-machine-control-design-review/projects/*.clmproj
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'test: refresh deterministic sample projects'
+            git push origin HEAD:agent/japanese-ui-copy
+          }
