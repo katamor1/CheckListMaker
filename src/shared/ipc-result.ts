@@ -54,6 +54,32 @@ export const isUserFacingErrorPresentation = (
   return true;
 };
 
+const internalErrorMessage = (
+  code: string,
+  presentation: UserFacingErrorPresentation
+): string => {
+  switch (code) {
+    case 'INVALID_ARGUMENT': return '入力データが不正です。';
+    case 'OUTPUT_NOT_ALLOWED': return 'この場所を開く権限がありません。';
+    case 'WINDOW_UNAVAILABLE': return '処理に失敗しました。再度お試しください。';
+    case 'PROJECT_REQUIRED': return 'プロジェクトを新規作成するか開いてください。';
+    case 'PROJECT_OPEN_FAILED': return 'プロジェクトを開けませんでした。ファイルが破損しているか、対応していない形式です。';
+    case 'PROJECT_DOCUMENT_MISMATCH': return '選択文書が現在のプロジェクトと一致しません。文書を選択し直してください。';
+    case 'PROJECT_MISMATCH': return '現在のプロジェクトと更新内容が一致しません。';
+    case 'PROJECT_INVALID': return 'プロジェクトデータが不正です。';
+    case 'PROJECT_SAVE_FAILED': return 'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。';
+    case 'PROJECT_DIRTY': return 'プロジェクトを保存してからパッケージを作成してください。';
+    case 'PACKAGE_EXPORT_FAILED': return 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。';
+    case 'DOCUMENT_REGISTER_FAILED':
+      return presentation.title.startsWith('参考資料')
+        ? '参考資料を登録できませんでした。ファイルを確認してください。'
+        : '文書を登録できませんでした。ファイルを確認してください。';
+    case 'TEMPLATE_SAVE_FAILED': return 'テンプレートを保存できませんでした。保存先とアクセス権を確認してください。';
+    case 'TEMPLATE_OPEN_FAILED': return 'テンプレートを開けませんでした。ファイルが破損しているか、対応していない形式です。';
+    default: return presentation.message;
+  }
+};
+
 export type IpcError =
   | {
       brand: typeof IPC_USER_ERROR_BRAND;
@@ -75,7 +101,7 @@ export class UserFacingError extends Error {
     readonly presentation: UserFacingErrorPresentation,
     cause?: unknown
   ) {
-    super(presentation.message, cause === undefined ? undefined : { cause });
+    super(internalErrorMessage(code, presentation), cause === undefined ? undefined : { cause });
     this.name = 'UserFacingError';
   }
 }
