@@ -40,7 +40,7 @@ describe('session dialogs', () => {
 
   it('provides a fixed safe message when renderer flush cannot be confirmed', () => {
     expect(CLOSE_FLUSH_TIMEOUT_MESSAGE).toBe(
-      '最新の編集内容を確認できないため、終了を中止しました。もう一度お試しください。'
+      '最新の編集内容を確認できないため、終了を中止しました。もう一度操作してください。'
     );
   });
 });
