@@ -1420,8 +1420,8 @@ class RegisteredSampleCatalogTests(unittest.TestCase):
             "9080a74a6714122409d31c29cde320f5414456595fe82a6f1eaf153dd2d6b233",
         ),
         "README.md": (
-            4841,
-            "d370aa2a5e52eb4b320d2b0d8b416fcfbfc2ff51725995bce4ac9d9c8afcce62",
+            5288,
+            "2cb7a4150c378cd35146731b3a587c5d32ceffb117325d7c46a30d81e4972793",
         ),
         "references/basic-design-template.md": (
             1377,
