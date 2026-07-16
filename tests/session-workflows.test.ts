@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ProjectSessionManager, type SessionResources } from '../src/main/project-session.js';
 import { DocumentRegistry } from '../src/main/document-registry.js';
 import { UserFacingError } from '../src/shared/ipc-result.js';
+import { userFacingErrors, validationMessages } from '../src/shared/presentation/ja/index.js';
 import {
   exportCleanSession,
   guardUnsavedSession,
@@ -94,7 +95,7 @@ describe('session workflows', () => {
 
     await expect(exportCleanSession(manager, { pickExportPath })).rejects.toMatchObject({
       code: 'PROJECT_DIRTY',
-      message: 'プロジェクトを保存してからパッケージを作成してください。'
+      presentation: userFacingErrors.projectDirty
     });
     expect(pickExportPath).not.toHaveBeenCalled();
     expect(generate).not.toHaveBeenCalled();
@@ -119,9 +120,7 @@ describe('session workflows', () => {
     expect(continued).toBe(false);
     expect(manager.currentSummary()).toEqual(before);
     expect(manager.requireCurrent().resources.registry).toBe(context.resources.registry);
-    expect(showError).toHaveBeenCalledWith(
-      'プロジェクトを保存できませんでした。保存先とアクセス権を確認してください。'
-    );
+    expect(showError).toHaveBeenCalledWith(userFacingErrors.projectSaveFailed);
     expect(reportUnexpected).toHaveBeenCalledWith(diskFailure);
   });
 
@@ -139,7 +138,7 @@ describe('session workflows', () => {
     expect(manager.currentSummary()).toEqual(before);
   });
 
-  it('keeps the active context and shows a safe validation message when guarded save is invalid', async () => {
+  it('keeps the active context and shows structured validation guidance when guarded save is invalid', async () => {
     const manager = readyManager();
     const context = manager.requireCurrent();
     context.project.generation = { ...context.project.generation!, instructions: '' };
@@ -154,7 +153,11 @@ describe('session workflows', () => {
 
     expect(continued).toBe(false);
     expect(manager.currentSummary()).toEqual(before);
-    expect(showError).toHaveBeenCalledWith('保存できません: 文書生成指示が空です。');
+    expect(showError).toHaveBeenCalledWith({
+      title: validationMessages.GENERATION_INSTRUCTIONS_REQUIRED.title,
+      message: validationMessages.GENERATION_INSTRUCTIONS_REQUIRED.remediation,
+      nextAction: '入力内容を修正してから、もう一度操作してください。'
+    });
   });
 
   it('refuses replacement when a successful save still has a newer dirty revision', async () => {
@@ -185,9 +188,12 @@ describe('session workflows', () => {
       dirty: true,
       project: { name: '保存中の新しい入力' }
     });
-    expect(showError).toHaveBeenCalledWith(
-      '保存中に新しい変更があったため、操作を中止しました。もう一度実行してください。'
-    );
+    expect(showError).toHaveBeenCalledWith({
+      title: '操作を続行できませんでした。',
+      message: '保存中に新しい変更が加えられたため、操作を中止しました。',
+      dataSafety: '新しい変更は未保存のまま残っています。',
+      nextAction: 'プロジェクトを上書き保存してから、もう一度操作してください。'
+    });
   });
 
   it('blocks export before choosing a destination when validation fails', async () => {
@@ -200,7 +206,11 @@ describe('session workflows', () => {
 
     await expect(exportCleanSession(manager, { pickExportPath })).rejects.toMatchObject({
       code: 'PROJECT_INVALID',
-      message: 'パッケージを作成できません: 主対象文書がありません。'
+      presentation: {
+        title: validationMessages.TARGET_REQUIRED.title,
+        message: validationMessages.TARGET_REQUIRED.remediation,
+        nextAction: '入力内容を修正してから、もう一度操作してください。'
+      }
     });
     expect(pickExportPath).not.toHaveBeenCalled();
     expect(context.resources.packageGenerator.generate).not.toHaveBeenCalled();
@@ -245,7 +255,7 @@ describe('session workflows', () => {
     expect(manager.currentSummary()).toEqual(before);
   });
 
-  it('wraps package failures without leaking the raw error through the message', async () => {
+  it('wraps package failures without leaking the raw error through the presentation', async () => {
     const manager = readyManager();
     const context = manager.requireCurrent();
     context.dirty = false;
@@ -260,10 +270,10 @@ describe('session workflows', () => {
     expect(failure).toBeInstanceOf(UserFacingError);
     expect(failure).toMatchObject({
       code: 'PACKAGE_EXPORT_FAILED',
-      message: 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。',
+      presentation: userFacingErrors.packageExportFailed,
       cause: rawFailure
     });
-    expect((failure as Error).message).not.toContain('C:\\private');
+    expect(JSON.stringify((failure as UserFacingError).presentation)).not.toContain('C:\\private');
     expect(manager.currentSummary()).toEqual(before);
   });
 
