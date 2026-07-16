@@ -12,9 +12,23 @@ import { stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IPC } from '../shared/ipc.js';
-import { GENERIC_USER_MESSAGE, UserFacingError } from '../shared/ipc-result.js';
+import {
+  GENERIC_USER_PRESENTATION,
+  UserFacingError,
+  type UserFacingErrorPresentation
+} from '../shared/ipc-result.js';
 import { APPLICATION_VERSION } from '../shared/model.js';
 import type { SelectedDocument } from '../shared/model.js';
+import {
+  packageSaveDialogOptions,
+  projectOpenDialogOptions,
+  projectSaveDialogOptions,
+  referencesSelectDialogOptions,
+  targetSelectDialogOptions,
+  templateOpenDialogOptions,
+  templateSaveDialogOptions,
+  userFacingErrors
+} from '../shared/presentation/ja/index.js';
 import {
   CloseCoordinator,
   coordinateClose
@@ -41,13 +55,30 @@ const allowedOutputPaths = new Set<string>();
 const closeCoordinators = new Map<number, CloseCoordinator>();
 const CLOSE_FLUSH_TIMEOUT_MS = 5_000;
 
-const fileFilters = [{ name: '対応文書', extensions: ['md', 'txt', 'docx', 'pdf'] }];
+const presentationForNativeError = (
+  error: UserFacingErrorPresentation | string
+): UserFacingErrorPresentation => typeof error === 'string'
+  ? {
+      title: '操作を続行できませんでした。',
+      message: error,
+      dataSafety: '保存済みのファイルは変更されていません。',
+      nextAction: '内容を確認して、もう一度操作してください。'
+    }
+  : error;
 
-const showSafeError = async (owner: BrowserWindow, message: string): Promise<void> => {
+const showSafeError = async (
+  owner: BrowserWindow,
+  error: UserFacingErrorPresentation | string
+): Promise<void> => {
+  const presentation = presentationForNativeError(error);
+  const detail = [presentation.dataSafety, presentation.nextAction]
+    .filter((value): value is string => Boolean(value))
+    .join('\n\n');
   await dialog.showMessageBox(owner, {
     type: 'error',
-    title: 'CheckListMaker',
-    message,
+    title: presentation.title,
+    message: presentation.message,
+    ...(detail ? { detail } : {}),
     buttons: ['閉じる'],
     defaultId: 0,
     cancelId: 0,
@@ -61,26 +92,17 @@ const createOwnerBoundPorts = (owner: BrowserWindow): SessionControllerPorts => 
     return decisionForDialogResponse(result.response);
   },
   pickProjectPath: async (defaultName) => {
-    const result = await dialog.showSaveDialog(owner, {
-      defaultPath: `${defaultName || 'project'}.clmproj`,
-      filters: [{ name: 'CheckListMakerプロジェクト', extensions: ['clmproj'] }]
-    });
+    const result = await dialog.showSaveDialog(owner, projectSaveDialogOptions(defaultName));
     return result.canceled ? undefined : result.filePath;
   },
-  showError: (message) => showSafeError(owner, message),
+  showError: (presentation) => showSafeError(owner, presentation),
   reportUnexpected: (error) => console.error(error),
   pickOpenProject: async () => {
-    const result = await dialog.showOpenDialog(owner, {
-      properties: ['openFile'],
-      filters: [{ name: 'CheckListMakerプロジェクト', extensions: ['clmproj'] }]
-    });
+    const result = await dialog.showOpenDialog(owner, projectOpenDialogOptions());
     return result.canceled ? undefined : result.filePaths[0];
   },
   pickExportPath: async (defaultName) => {
-    const result = await dialog.showSaveDialog(owner, {
-      defaultPath: `${defaultName || 'project'}-copilot-package.zip`,
-      filters: [{ name: 'ZIPパッケージ', extensions: ['zip'] }]
-    });
+    const result = await dialog.showSaveDialog(owner, packageSaveDialogOptions(defaultName));
     return result.canceled ? undefined : result.filePath;
   }
 });
@@ -90,10 +112,7 @@ const selectOneDocument = async (
   registry: DocumentRegistry,
   storedPath: string
 ): Promise<SelectedDocument | null> => {
-  const result = await dialog.showOpenDialog(owner, {
-    properties: ['openFile'],
-    filters: fileFilters
-  });
+  const result = await dialog.showOpenDialog(owner, targetSelectDialogOptions());
   const selected = result.filePaths[0];
   if (result.canceled || !selected) return null;
   return registry.registerPath(selected, `${storedPath}${extname(selected).toLowerCase()}`);
@@ -103,10 +122,7 @@ const selectManyDocuments = async (
   owner: BrowserWindow,
   registry: DocumentRegistry
 ): Promise<SelectedDocument[]> => {
-  const result = await dialog.showOpenDialog(owner, {
-    properties: ['openFile', 'multiSelections'],
-    filters: fileFilters
-  });
+  const result = await dialog.showOpenDialog(owner, referencesSelectDialogOptions());
   if (result.canceled) return [];
   return Promise.all(result.filePaths.map((path) =>
     registry.registerPath(
@@ -116,44 +132,34 @@ const selectManyDocuments = async (
   ));
 };
 
+const assertSender = (owner: BrowserWindow, senderId: number): void => {
+  if (senderId !== owner.webContents.id) {
+    throw new UserFacingError('INVALID_ARGUMENT', userFacingErrors.invalidArgument);
+  }
+};
+
 const createHandlerDependencies = (owner: BrowserWindow): SessionHandlerDependencies => ({
   manager,
   controllerFor: (senderId) => {
-    if (senderId !== owner.webContents.id) {
-      throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
-    }
+    assertSender(owner, senderId);
     return new ProjectSessionController(manager, createOwnerBoundPorts(owner));
   },
   selectTarget: (senderId, registry) => {
-    if (senderId !== owner.webContents.id) {
-      throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
-    }
+    assertSender(owner, senderId);
     return selectOneDocument(owner, registry, 'target/TARGET');
   },
   selectReferences: (senderId, registry) => {
-    if (senderId !== owner.webContents.id) {
-      throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
-    }
+    assertSender(owner, senderId);
     return selectManyDocuments(owner, registry);
   },
   pickTemplateSavePath: async (senderId, defaultName) => {
-    if (senderId !== owner.webContents.id) {
-      throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
-    }
-    const result = await dialog.showSaveDialog(owner, {
-      defaultPath: `${defaultName || 'checklist'}.clmcheck`,
-      filters: [{ name: 'CheckListMakerテンプレート', extensions: ['clmcheck'] }]
-    });
+    assertSender(owner, senderId);
+    const result = await dialog.showSaveDialog(owner, templateSaveDialogOptions(defaultName));
     return result.canceled ? undefined : result.filePath;
   },
   pickTemplateOpenPath: async (senderId) => {
-    if (senderId !== owner.webContents.id) {
-      throw new UserFacingError('INVALID_ARGUMENT', '入力データが不正です。');
-    }
-    const result = await dialog.showOpenDialog(owner, {
-      properties: ['openFile'],
-      filters: [{ name: 'CheckListMakerテンプレート', extensions: ['clmcheck'] }]
-    });
+    assertSender(owner, senderId);
+    const result = await dialog.showOpenDialog(owner, templateOpenDialogOptions());
     return result.canceled ? undefined : result.filePaths[0];
   },
   acknowledgeClose: (senderId, requestId) => {
@@ -212,7 +218,7 @@ const registerCloseGuard = (window: BrowserWindow): void => {
     reportUnexpected: (error) => console.error(error),
     timeoutMs: CLOSE_FLUSH_TIMEOUT_MS,
     timeoutMessage: CLOSE_FLUSH_TIMEOUT_MESSAGE,
-    genericMessage: GENERIC_USER_MESSAGE
+    genericMessage: GENERIC_USER_PRESENTATION.message
   });
 };
 
@@ -272,7 +278,7 @@ app.whenReady().then(() => {
   });
 }).catch((error: unknown) => {
   console.error(error);
-  dialog.showErrorBox('CheckListMakerを起動できません', GENERIC_USER_MESSAGE);
+  dialog.showErrorBox(GENERIC_USER_PRESENTATION.title, GENERIC_USER_PRESENTATION.message);
   app.exit(1);
 });
 
