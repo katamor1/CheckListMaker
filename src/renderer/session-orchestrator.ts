@@ -86,9 +86,6 @@ export const safeRendererError = (error: unknown): RendererUserFacingError => {
   };
 };
 
-export const safeRendererErrorMessage = (error: unknown): string =>
-  safeRendererError(error).presentation.message;
-
 export class RendererSessionOrchestrator {
   constructor(private readonly options: RendererSessionOrchestratorOptions) {}
 
