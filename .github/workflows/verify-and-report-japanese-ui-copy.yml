@@ -1,0 +1,108 @@
+name: Verify and report Japanese UI copy gates
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/verify-and-report-japanese-ui-copy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git and integrate current main locally
+        shell: pwsh
+        run: |
+          git config user.name 'checklistmaker-ci'
+          git config user.email 'checklistmaker-ci@users.noreply.github.com'
+          git fetch origin main
+          git merge --no-edit origin/main
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Refresh deterministic samples in the verification workspace
+        shell: pwsh
+        run: |
+          npm run build
+          node samples/tools/sample-projects.mjs --write
+          node samples/tools/sample-projects.mjs --check
+
+      - name: Type-check
+        shell: pwsh
+        run: npm run typecheck
+
+      - name: Run Electron tests
+        shell: pwsh
+        run: npm test
+
+      - name: Validate reusable samples
+        shell: pwsh
+        run: npm run verify:samples
+
+      - name: Build production application
+        shell: pwsh
+        run: npm run build
+
+      - name: Verify copy-only compatibility boundary
+        shell: pwsh
+        run: |
+          git diff --exit-code origin/main...HEAD -- src/shared/model.ts src/main/archive.ts src/main/project-store.ts src/main/package-generator.ts
+          git diff --exit-code origin/main...HEAD -- samples ':!samples/ja-machine-control-design-review/projects/*.clmproj'
+
+      - name: Comment automated result on PR 6
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $body = @"
+          ## 日本語UI文言の自動検証
+
+          統合対象: `$env:GITHUB_SHA`
+
+          次の工程がWindows上で成功しました。
+
+          - `npm run typecheck`
+          - `npm test`
+          - `npm run verify:samples`
+          - `npm run build`
+          - 決定論的サンプルプロジェクトの再生成・一致確認
+          - UI文言変更の契約境界確認
+
+          手動ゲートであるWindows 11実機のキーボード操作、100％・150％・200％表示倍率、長文エラー表示の目視確認は未完了です。PRはドラフトのまま維持します。
+          "@
+          gh api repos/${{ github.repository }}/issues/6/comments -f body="$body"
+
+      - name: Remove this temporary verification workflow
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath '.github/workflows/verify-and-report-japanese-ui-copy.yml' -Force
+          git add -A
+          git commit -m 'ci: remove temporary Japanese UI verification workflow'
+          git push origin HEAD:agent/japanese-ui-copy
