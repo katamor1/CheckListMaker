@@ -1,0 +1,64 @@
+name: Diagnose sample project regeneration
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/diagnose-sample-project.yml
+  pull_request:
+    paths:
+      - .github/workflows/diagnose-sample-project.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event_name != 'pull_request' || github.head_ref == 'agent/japanese-ui-copy'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Preserve committed samples
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/sample-diff/expected" | Out-Null
+          Copy-Item -Recurse -Force "samples/ja-machine-control-design-review/projects/*" "$env:RUNNER_TEMP/sample-diff/expected/"
+
+      - name: Regenerate samples
+        shell: pwsh
+        run: |
+          npm run build:main
+          node samples/tools/build_sample_projects.mjs --write
+
+      - name: Preserve regenerated samples
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/sample-diff/actual" | Out-Null
+          Copy-Item -Recurse -Force "samples/ja-machine-control-design-review/projects/*" "$env:RUNNER_TEMP/sample-diff/actual/"
+          Get-FileHash "$env:RUNNER_TEMP/sample-diff/expected/*" -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Set-Content "$env:RUNNER_TEMP/sample-diff/hashes.txt"
+          Get-FileHash "$env:RUNNER_TEMP/sample-diff/actual/*" -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Add-Content "$env:RUNNER_TEMP/sample-diff/hashes.txt"
+
+      - name: Upload sample comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-project-regeneration
+          path: ${{ runner.temp }}/sample-diff/**
+          if-no-files-found: error
+          retention-days: 1
