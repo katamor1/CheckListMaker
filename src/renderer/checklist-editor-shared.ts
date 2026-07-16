@@ -1,22 +1,23 @@
 import type { RepairPolicy } from '../shared/model.js';
+import { conditionTypeLabels, repairPolicyLabels } from '../shared/presentation/ja/index.js';
 import type { ConditionType } from './checklist-editor-model.js';
 
 export const repairPolicyOptions: Array<{ value: RepairPolicy; label: string }> = [
-  { value: 'auto_fix', label: '安全な場合は自動修正' },
-  { value: 'suggest_only', label: '修正案のみ' },
-  { value: 'do_not_modify', label: '変更・具体案を禁止' }
+  { value: 'auto_fix', label: repairPolicyLabels.auto_fix },
+  { value: 'suggest_only', label: repairPolicyLabels.suggest_only },
+  { value: 'do_not_modify', label: repairPolicyLabels.do_not_modify }
 ];
 
 export const conditionTypeOptions: Array<{ value: ConditionType; label: string }> = [
-  { value: 'semantic', label: '意味・内容' },
-  { value: 'required_text', label: '必須語句' },
-  { value: 'forbidden_text', label: '禁止語句' },
-  { value: 'number', label: '数値' },
-  { value: 'length_or_count', label: '文字数・件数' },
-  { value: 'date_or_deadline', label: '日付・期限' },
-  { value: 'pattern', label: '書式パターン' },
-  { value: 'one_of', label: '許可値' },
-  { value: 'cross_source_consistency', label: '参考資料整合性' }
+  { value: 'semantic', label: conditionTypeLabels.semantic },
+  { value: 'required_text', label: conditionTypeLabels.required_text },
+  { value: 'forbidden_text', label: conditionTypeLabels.forbidden_text },
+  { value: 'number', label: conditionTypeLabels.number },
+  { value: 'length_or_count', label: conditionTypeLabels.length_or_count },
+  { value: 'date_or_deadline', label: conditionTypeLabels.date_or_deadline },
+  { value: 'pattern', label: conditionTypeLabels.pattern },
+  { value: 'one_of', label: conditionTypeLabels.one_of },
+  { value: 'cross_source_consistency', label: conditionTypeLabels.cross_source_consistency }
 ];
 
 export const setOptionalText = <T extends object>(value: T, key: string, text: string): T => {
