@@ -1,0 +1,42 @@
+name: Export Japanese UI branch source
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/export-japanese-ui-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 1
+
+      - name: Create source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=dist \
+            --exclude=artifacts \
+            -czf "$RUNNER_TEMP/checklistmaker-japanese-ui-source.tar.gz" .
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: checklistmaker-japanese-ui-source
+          path: ${{ runner.temp }}/checklistmaker-japanese-ui-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
