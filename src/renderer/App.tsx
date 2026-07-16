@@ -42,7 +42,7 @@ export const App = () => {
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [preflightHasRun, setPreflightHasRun] = useState(false);
   const [versions, setVersions] = useState<Versions | null>(null);
-  const [notice, setNotice] = useState(messages.initialProjectPrompt);
+  const [notice, setNotice] = useState<string>(messages.initialProjectPrompt);
   const [userError, setUserError] = useState<RendererUserFacingError | null>(null);
   const [busy, setBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<WorkspaceSection>('overview');
