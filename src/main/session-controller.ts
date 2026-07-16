@@ -9,6 +9,7 @@ import type {
 } from '../shared/model.js';
 import { assertProjectDefinition } from '../shared/project-structure.js';
 import { UserFacingError } from '../shared/ipc-result.js';
+import { userFacingErrors } from '../shared/presentation/ja/index.js';
 import { validateProject } from '../shared/validation.js';
 import type { ProjectSessionManager } from './project-session.js';
 import {
@@ -48,7 +49,12 @@ export class ProjectSessionController {
       try {
         assertProjectDefinition(value);
       } catch (error) {
-        throw new UserFacingError('PROJECT_INVALID', 'プロジェクトデータが不正です。', error);
+        throw new UserFacingError('PROJECT_INVALID', {
+          title: '編集内容を反映できませんでした。',
+          message: 'プロジェクトデータの構造が不正です。',
+          dataSafety: '保存済みのプロジェクトファイルは変更されていません。',
+          nextAction: userFacingErrors.invalidArgument.nextAction
+        }, error);
       }
       const accepted = this.manager.updateDraft(value as ProjectDefinition, revision);
       return { accepted, revision: this.manager.currentSummary().revision };
