@@ -27,7 +27,7 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
-      - name: Decode and apply reviewed payload
+      - name: Decode reviewed payload
         shell: bash
         run: |
           python - <<'PY'
@@ -38,8 +38,8 @@ jobs:
 
           chunk_dir = Path('.github/gui-sample-refresh')
           chunks = sorted(chunk_dir.glob('payload-*.b64'))
-          if not chunks:
-              raise SystemExit('materialization payload is missing')
+          if len(chunks) != 10:
+              raise SystemExit(f'expected 10 payload chunks, found {len(chunks)}')
           encoded = ''.join(path.read_text(encoding='ascii').strip() for path in chunks)
           payload = base64.b64decode(encoded, validate=True)
           with zipfile.ZipFile(io.BytesIO(payload)) as archive:
@@ -48,8 +48,16 @@ jobs:
                   if path.is_absolute() or '..' in path.parts or '\\' in item.filename:
                       raise SystemExit(f'unsafe payload path: {item.filename}')
               archive.extractall('.')
+          print(f'extracted {len(archive.infolist())} payload files')
           PY
-          python .github/gui-sample-refresh/patch_sample_tests.py
+
+      - name: Patch sample catalog tests
+        shell: bash
+        run: python .github/gui-sample-refresh/patch_sample_tests.py
+
+      - name: Remove materialization staging files
+        shell: bash
+        run: |
           rm -rf .github/gui-sample-refresh
           rm -f .github/workflows/materialize-gui-sample-refresh.yml
 
