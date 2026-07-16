@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createProject } from '../src/shared/defaults.js';
 import { IPC } from '../src/shared/ipc.js';
 import { runIpcOperation, UserFacingError } from '../src/shared/ipc-result.js';
+import { userFacingErrors } from '../src/shared/presentation/ja/index.js';
+import { safeRendererError } from '../src/renderer/session-orchestrator.js';
 import { createBridge } from '../src/preload/preload.js';
 import type {
   ChecklistTemplateDefinition,
@@ -147,7 +149,11 @@ describe('createSessionHandlers', () => {
     const fixture = createFixture();
     const malformed = { ...project, references: 'not-an-array' };
     vi.mocked(fixture.controller.updateDraft).mockRejectedValue(
-      new UserFacingError('PROJECT_INVALID', 'プロジェクトデータが不正です。')
+      new UserFacingError('PROJECT_INVALID', {
+        title: '編集内容を反映できませんでした。',
+        message: 'プロジェクトデータの構造が不正です。',
+        nextAction: '操作をやり直してください。'
+      })
     );
     const handlers = createSessionHandlers(fixture.dependencies);
 
@@ -214,6 +220,7 @@ describe('createSessionHandlers', () => {
 
     await expect(handlers[IPC.selectTarget](context)).rejects.toMatchObject({
       code: 'DOCUMENT_REGISTER_FAILED',
+      presentation: userFacingErrors.targetRegisterFailed,
       message: '文書を登録できませんでした。ファイルを確認してください。',
       cause: registryCause
     });
@@ -223,16 +230,18 @@ describe('createSessionHandlers', () => {
     fixture.store.saveTemplate.mockRejectedValue(storeCause);
     await expect(handlers[IPC.saveTemplate](context)).rejects.toMatchObject({
       code: 'TEMPLATE_SAVE_FAILED',
+      presentation: userFacingErrors.templateSaveFailed,
       message: 'テンプレートを保存できませんでした。保存先とアクセス権を確認してください。',
       cause: storeCause
     });
     const unsafeStoreCause = new UserFacingError(
       'DEPENDENCY_RAW',
-      'C:\\secret\\template.clmcheck\n    at template:save'
+      { title: '依存処理のエラー', message: 'C:\\secret\\template.clmcheck\n    at template:save' }
     );
     fixture.store.saveTemplate.mockRejectedValue(unsafeStoreCause);
     await expect(handlers[IPC.saveTemplate](context)).rejects.toMatchObject({
       code: 'TEMPLATE_SAVE_FAILED',
+      presentation: userFacingErrors.templateSaveFailed,
       message: 'テンプレートを保存できませんでした。保存先とアクセス権を確認してください。',
       cause: unsafeStoreCause
     });
@@ -241,16 +250,18 @@ describe('createSessionHandlers', () => {
     vi.mocked(fixture.dependencies.measureOutput).mockRejectedValue(statCause);
     await expect(handlers[IPC.exportPackage](context)).rejects.toMatchObject({
       code: 'PACKAGE_EXPORT_FAILED',
+      presentation: userFacingErrors.packageExportFailed,
       message: 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。',
       cause: statCause
     });
     const unsafeStatCause = new UserFacingError(
       'DEPENDENCY_RAW',
-      'C:\\secret\\package.zip\n    at package:stat'
+      { title: '依存処理のエラー', message: 'C:\\secret\\package.zip\n    at package:stat' }
     );
     vi.mocked(fixture.dependencies.measureOutput).mockRejectedValue(unsafeStatCause);
     await expect(handlers[IPC.exportPackage](context)).rejects.toMatchObject({
       code: 'PACKAGE_EXPORT_FAILED',
+      presentation: userFacingErrors.packageExportFailed,
       message: 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。',
       cause: unsafeStatCause
     });
@@ -260,12 +271,13 @@ describe('createSessionHandlers', () => {
   it('replaces an unsafe dependency UserFacingError before IPC and Preload can expose it', async () => {
     const fixture = createFixture();
     const unsafeMessage = "C:\\secret\\customer.clmcheck\n    at dependency stack\nproject:save";
-    const dependencyError = new UserFacingError('DEPENDENCY_RAW', unsafeMessage);
+    const dependencyError = new UserFacingError('DEPENDENCY_RAW', { title: '依存処理のエラー', message: unsafeMessage });
     vi.mocked(fixture.dependencies.selectTarget).mockRejectedValue(dependencyError);
     const handlers = createSessionHandlers(fixture.dependencies);
 
     await expect(handlers[IPC.selectTarget](context)).rejects.toMatchObject({
       code: 'DOCUMENT_REGISTER_FAILED',
+      presentation: userFacingErrors.targetRegisterFailed,
       message: '文書を登録できませんでした。ファイルを確認してください。',
       cause: dependencyError
     });
@@ -280,21 +292,24 @@ describe('createSessionHandlers', () => {
       on: vi.fn(),
       removeListener: vi.fn()
     });
-    await expect(bridge.selectTarget()).rejects.toThrow(
-      '文書を登録できませんでした。ファイルを確認してください。'
-    );
-    await expect(bridge.selectTarget()).rejects.not.toThrow('project:save');
+    const rendererFailure = await bridge.selectTarget().catch((error: unknown) => error);
+    expect(safeRendererError(rendererFailure)).toEqual({
+      code: 'DOCUMENT_REGISTER_FAILED',
+      presentation: userFacingErrors.targetRegisterFailed
+    });
+    expect(JSON.stringify(rendererFailure)).not.toContain('project:save');
   });
 
   it('replaces an unsafe package dependency UserFacingError at the export boundary', async () => {
     const fixture = createFixture();
     const unsafeMessage = "C:\\secret\\package.zip\n    at package dependency stack\npackage:export";
-    const dependencyError = new UserFacingError('DEPENDENCY_RAW', unsafeMessage);
+    const dependencyError = new UserFacingError('DEPENDENCY_RAW', { title: '依存処理のエラー', message: unsafeMessage });
     fixture.controller.export.mockRejectedValue(dependencyError);
     const handlers = createSessionHandlers(fixture.dependencies);
 
     await expect(handlers[IPC.exportPackage](context)).rejects.toMatchObject({
       code: 'PACKAGE_EXPORT_FAILED',
+      presentation: userFacingErrors.packageExportFailed,
       message: 'パッケージを作成できませんでした。保存先とアクセス権を確認してください。',
       cause: dependencyError
     });
@@ -309,10 +324,12 @@ describe('createSessionHandlers', () => {
       on: vi.fn(),
       removeListener: vi.fn()
     });
-    await expect(bridge.exportPackage()).rejects.toThrow(
-      'パッケージを作成できませんでした。保存先とアクセス権を確認してください。'
-    );
-    await expect(bridge.exportPackage()).rejects.not.toThrow('package:export');
+    const rendererFailure = await bridge.exportPackage().catch((error: unknown) => error);
+    expect(safeRendererError(rendererFailure)).toEqual({
+      code: 'PACKAGE_EXPORT_FAILED',
+      presentation: userFacingErrors.packageExportFailed
+    });
+    expect(JSON.stringify(rendererFailure)).not.toContain('package:export');
   });
 
   it('contains each session invoke channel exactly once and excludes direct handlers', () => {
