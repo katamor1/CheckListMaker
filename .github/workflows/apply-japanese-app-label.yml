@@ -1,0 +1,48 @@
+name: Apply Japanese application label fix
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/apply-japanese-app-label.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply approved Japanese label
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('src/renderer/App.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = '<div><dt>App</dt><dd>{versions.application}</dd></div>'
+          new = '<div><dt>アプリ</dt><dd>{versions.application}</dd></div>'
+          if text.count(old) != 1:
+              raise SystemExit('expected application label was not found exactly once')
+          path.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+          Path('.github/workflows/apply-japanese-app-label.yml').unlink()
+
+      - name: Commit label fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'checklistmaker-agent'
+          git config user.email 'checklistmaker-agent@users.noreply.github.com'
+          git add src/renderer/App.tsx .github/workflows/apply-japanese-app-label.yml
+          git diff --cached --check
+          git commit -m 'fix: localize application version label'
+          git push origin HEAD:agent/japanese-ui-copy
