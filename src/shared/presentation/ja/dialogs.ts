@@ -14,12 +14,14 @@ export const dialogs = Object.freeze({
   defaultChecklistName: '新しいチェックリスト'
 } as const);
 
+type OpenDialogProperty = 'openFile' | 'multiSelections';
+
 const preferredName = (value: string, fallback: string): string =>
   value.trim().length > 0 ? value.trim() : fallback;
 
 export const projectOpenDialogOptions = () => ({
   title: dialogs.projectOpenTitle,
-  properties: ['openFile'] as const,
+  properties: ['openFile'] as OpenDialogProperty[],
   filters: [{ name: dialogs.projectFilter, extensions: ['clmproj'] }]
 });
 
@@ -31,19 +33,19 @@ export const projectSaveDialogOptions = (projectName: string) => ({
 
 export const targetSelectDialogOptions = () => ({
   title: dialogs.targetSelectTitle,
-  properties: ['openFile'] as const,
+  properties: ['openFile'] as OpenDialogProperty[],
   filters: [{ name: dialogs.supportedDocumentFilter, extensions: ['md', 'txt', 'docx', 'pdf'] }]
 });
 
 export const referencesSelectDialogOptions = () => ({
   title: dialogs.referencesSelectTitle,
-  properties: ['openFile', 'multiSelections'] as const,
+  properties: ['openFile', 'multiSelections'] as OpenDialogProperty[],
   filters: [{ name: dialogs.supportedDocumentFilter, extensions: ['md', 'txt', 'docx', 'pdf'] }]
 });
 
 export const templateOpenDialogOptions = () => ({
   title: dialogs.templateOpenTitle,
-  properties: ['openFile'] as const,
+  properties: ['openFile'] as OpenDialogProperty[],
   filters: [{ name: dialogs.templateFilter, extensions: ['clmcheck'] }]
 });
 
