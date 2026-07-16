@@ -7,6 +7,7 @@ samples/**/*.txt text eol=lf
 samples/**/*.json text eol=lf
 samples/**/*.py text eol=lf
 tests/sample_catalog/**/*.py text eol=lf
+docs/user-guide/**/*.md text eol=lf
 
 # Office/PDF and CheckListMaker containers are always binary.
 *.docx binary
