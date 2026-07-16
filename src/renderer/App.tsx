@@ -8,16 +8,27 @@ import type {
   SessionSnapshot,
   ValidationIssue
 } from '../shared/model.js';
+import {
+  actions,
+  messages,
+  packageCreatedMessage,
+  preflightIssueCountMessage,
+  projectCreatedMessage,
+  projectModeLabel,
+  referencesRegisteredMessage,
+  terminology
+} from '../shared/presentation/ja/index.js';
 import { DraftSynchronizer } from './draft-synchronizer.js';
-import { ProjectWorkspace, modeLabel, type WorkspaceSection } from './ProjectWorkspace.js';
+import { ProjectWorkspace, type WorkspaceSection } from './ProjectWorkspace.js';
 import { appendSelectedReferences } from './reference-editor-model.js';
 import { saveThenExport } from './session-actions.js';
 import { SessionOperationQueue } from './session-operation-queue.js';
 import {
   RendererSessionOrchestrator,
-  normalizeRendererError,
-  safeRendererErrorMessage
+  safeRendererError,
+  type RendererUserFacingError
 } from './session-orchestrator.js';
+import { UserFacingErrorNotice } from './UserFacingErrorNotice.js';
 
 type Versions = {
   application: string;
@@ -29,8 +40,10 @@ type Versions = {
 export const App = () => {
   const [summary, setSummary] = useState<SessionSnapshot | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
+  const [preflightHasRun, setPreflightHasRun] = useState(false);
   const [versions, setVersions] = useState<Versions | null>(null);
-  const [notice, setNotice] = useState('プロジェクトを新規作成するか、既存の.clmprojを開いてください。');
+  const [notice, setNotice] = useState(messages.initialProjectPrompt);
+  const [userError, setUserError] = useState<RendererUserFacingError | null>(null);
   const [busy, setBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<WorkspaceSection>('overview');
   const [lastExportPath, setLastExportPath] = useState<string | null>(null);
@@ -57,7 +70,7 @@ export const App = () => {
       synchronizer,
       operationQueue,
       publishSummary: setSummary,
-      reportError: (error) => setNotice(safeRendererErrorMessage(normalizeRendererError(error)))
+      reportError: (error) => setUserError(safeRendererError(error))
     });
   }
   const orchestrator = orchestratorRef.current;
@@ -66,40 +79,53 @@ export const App = () => {
     void window.checklistMaker
       .getVersions()
       .then(setVersions)
-      .catch((error: unknown) => setNotice(
-        safeRendererErrorMessage(normalizeRendererError(error))
-      ));
+      .catch((error: unknown) => setUserError(safeRendererError(error)));
   }, []);
 
   useEffect(() => orchestrator.subscribeClose(), [orchestrator]);
 
   const project = summary?.project;
 
+  const beginOperation = (): void => {
+    setUserError(null);
+  };
+
+  const markEdited = (): void => {
+    setIssues([]);
+    setPreflightHasRun(false);
+    setUserError(null);
+  };
+
   const createProject = (mode: ProjectMode): void => {
+    beginOperation();
     void orchestrator.runSessionOperation(async () => {
       const result = await window.checklistMaker.newProject(mode);
       if (result.canceled || !result.summary) return;
       orchestrator.adoptSummary(result.summary);
       setIssues([]);
+      setPreflightHasRun(false);
       setActiveSection('overview');
       setLastExportPath(null);
-      setNotice(`${modeLabel(mode)}プロジェクトを作成しました。`);
+      setNotice(projectCreatedMessage(projectModeLabel(mode)));
     });
   };
 
   const openProject = (): void => {
+    beginOperation();
     void orchestrator.runSessionOperation(async () => {
       const result = await window.checklistMaker.openProject();
       if (result.canceled || !result.summary) return;
       orchestrator.adoptSummary(result.summary);
       setIssues([]);
+      setPreflightHasRun(false);
       setActiveSection('overview');
       setLastExportPath(null);
-      setNotice('プロジェクトを開きました。');
+      setNotice(messages.projectOpened);
     });
   };
 
   const updateProjectName = (name: string): void => {
+    markEdited();
     orchestrator.commitProject((current) => ({
       ...current,
       name,
@@ -108,6 +134,7 @@ export const App = () => {
   };
 
   const updateGeneration = (generation: DocumentGenerationDefinition): void => {
+    markEdited();
     orchestrator.commitProject((current) => ({
       ...current,
       generation,
@@ -116,6 +143,7 @@ export const App = () => {
   };
 
   const updateReferences = (references: ReferenceDocumentDefinition[]): void => {
+    markEdited();
     orchestrator.commitProject((current) => ({
       ...current,
       references,
@@ -124,6 +152,7 @@ export const App = () => {
   };
 
   const updateChecklist = (checklist: ChecklistDefinition): void => {
+    markEdited();
     const availableRoleIds = new Set(checklist.requiredReferenceRoles.map((role) => role.roleId));
     orchestrator.commitProject((current) => ({
       ...current,
@@ -137,6 +166,7 @@ export const App = () => {
   };
 
   const updateDefaultRepairPolicy = (defaultRepairPolicy: RepairPolicy): void => {
+    markEdited();
     orchestrator.commitProject((current) => ({
       ...current,
       defaultRepairPolicy,
@@ -146,54 +176,63 @@ export const App = () => {
 
   const selectTarget = (): void => {
     if (!summaryRef.current) return;
+    beginOperation();
     void orchestrator.runSessionOperation(async () => {
       const next = await window.checklistMaker.selectTarget();
       if (!next) return;
       orchestrator.adoptSummary(next);
-      const targetName = next.project.target?.originalFileName;
-      if (targetName) setNotice(`${targetName}を主対象文書として登録しました。`);
+      setIssues([]);
+      setPreflightHasRun(false);
+      if (next.project.target) setNotice(messages.targetRegistered);
     });
   };
 
   const selectReferences = (): void => {
     if (!summaryRef.current) return;
+    beginOperation();
     void orchestrator
       .runSessionOperation(() => window.checklistMaker.selectReferences())
       .then((documents) => {
         if (documents.length === 0) return;
         orchestrator.commitProject((current) => appendSelectedReferences(current, documents));
+        setIssues([]);
+        setPreflightHasRun(false);
         setActiveSection('references');
-        setNotice(`${documents.length}件の参考資料を登録しました。用途、権威レベル、優先順位を確認してください。`);
+        setNotice(referencesRegisteredMessage(documents.length));
       }, () => undefined);
   };
 
   const validate = (): void => {
     if (!summaryRef.current) return;
+    beginOperation();
     void orchestrator.runSessionOperation(async () => {
       const nextIssues = await window.checklistMaker.validateProject();
       setIssues(nextIssues);
+      setPreflightHasRun(true);
       setNotice(nextIssues.length === 0
-        ? '事前検査に合格しました。'
-        : `事前検査で${nextIssues.length}件の指摘があります。`);
+        ? messages.preflightPassed
+        : preflightIssueCountMessage(nextIssues.length));
     });
   };
 
   const save = (saveAs = false): void => {
     if (!summaryRef.current) return;
+    beginOperation();
     void orchestrator.runSessionOperation(async () => {
       const result = await window.checklistMaker.saveProject(saveAs);
       orchestrator.adoptSummary(result.summary);
       if (result.canceled) return;
       if (result.summary.dirty) {
-        setNotice('保存中に新しい変更があったため、未保存のままです。');
+        setNotice('保存中に新しい変更があったため、未保存の変更が残っています。');
         return;
       }
-      setNotice(saveAs ? '名前を付けて保存しました。' : 'プロジェクトを保存しました。');
+      setNotice(saveAs ? messages.projectSavedAs : messages.projectSaved);
     });
   };
 
   const exportPackage = (): void => {
     if (!summaryRef.current) return;
+    beginOperation();
     void orchestrator.runSessionOperation(async () => {
       const current = summaryRef.current;
       if (!current) return;
@@ -204,13 +243,14 @@ export const App = () => {
       );
       if (result.canceled || !result.path) return;
       setLastExportPath(result.path);
-      setNotice(`Copilot用ZIPを生成しました（${result.fileCount ?? 0}ファイル）。`);
+      setNotice(packageCreatedMessage(result.fileCount ?? 0));
     });
   };
 
   const openExportFolder = (): void => {
     const path = lastExportPath;
     if (!path) return;
+    beginOperation();
     void orchestrator.runSessionOperation(async () => window.checklistMaker.openFolder(path));
   };
 
@@ -218,12 +258,12 @@ export const App = () => {
     <main className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">LOCAL DOCUMENT VALIDATION PACKAGE BUILDER</p>
+          <p className="eyebrow">{terminology.productDescriptor}</p>
           <h1>CheckListMaker</h1>
           <p className="lede">チェックリストと対象文書から、Copilotで自己検証できる実行ZIPを作成します。</p>
         </div>
         {versions ? (
-          <dl className="versions" aria-label="アプリケーションのバージョン">
+          <dl className="versions" aria-label={terminology.versionInformation}>
             <div><dt>App</dt><dd>{versions.application}</dd></div>
             <div><dt>Electron</dt><dd>{versions.electron}</dd></div>
           </dl>
@@ -231,9 +271,9 @@ export const App = () => {
       </header>
 
       <section className="command-bar" aria-label="プロジェクト操作">
-        <button type="button" onClick={() => createProject('existing_document')} disabled={busy}>既存文書を検証</button>
-        <button type="button" onClick={() => createProject('document_generation')} disabled={busy}>文書を生成して検証</button>
-        <button type="button" className="secondary" onClick={openProject} disabled={busy}>プロジェクトを開く</button>
+        <button type="button" onClick={() => createProject('existing_document')} disabled={busy}>{actions.createExistingProject}</button>
+        <button type="button" onClick={() => createProject('document_generation')} disabled={busy}>{actions.createGenerationProject}</button>
+        <button type="button" className="secondary" onClick={openProject} disabled={busy}>{actions.openProject}</button>
       </section>
 
       {project ? (
@@ -242,6 +282,7 @@ export const App = () => {
           dirty={summary?.dirty ?? true}
           activeSection={activeSection}
           issues={issues}
+          preflightHasRun={preflightHasRun}
           busy={busy}
           onSectionChange={setActiveSection}
           onProjectNameChange={updateProjectName}
@@ -257,14 +298,18 @@ export const App = () => {
         />
       ) : (
         <section className="empty-workspace">
-          <h2>ローカルで準備し、Copilotへ手動で渡す</h2>
-          <p>文書や参考資料は、パッケージを明示的にエクスポートするまで外部へ送信されません。</p>
+          <h2>{messages.projectNotOpen}</h2>
+          <p>文書や参考資料は、Copilot用ZIPを明示的に作成するまで外部へ送信されません。</p>
         </section>
       )}
 
+      {userError ? <UserFacingErrorNotice error={userError} /> : null}
+
       <footer className="app-footer">
-        <p role="status" aria-live="polite">{busy ? '処理中…' : notice}</p>
-        {lastExportPath ? <button type="button" className="link-button" onClick={openExportFolder}>生成したZIPを表示</button> : null}
+        <p role="status" aria-live="polite">{busy ? messages.processing : notice}</p>
+        {lastExportPath ? (
+          <button type="button" className="link-button" onClick={openExportFolder}>{actions.openExportLocation}</button>
+        ) : null}
       </footer>
     </main>
   );
