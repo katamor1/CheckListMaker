@@ -59,12 +59,14 @@ const invalidArgument = (): never => {
 const expectedFailure = async <T>(
   operation: () => Promise<T>,
   code: string,
-  presentation: UserFacingErrorPresentation
+  presentation: UserFacingErrorPresentation,
+  preserveTrustedError = false
 ): Promise<T> => {
   try {
     return await operation();
   } catch (error) {
     if (
+      preserveTrustedError &&
       error instanceof UserFacingError &&
       KNOWN_USER_ERROR_CODES.has(error.code) &&
       isUserFacingErrorPresentation(error.presentation)
@@ -142,7 +144,8 @@ export const createSessionHandlers = (
     const result = await expectedFailure(
       () => dependencies.controllerFor(senderId).export(),
       'PACKAGE_EXPORT_FAILED',
-      userFacingErrors.packageExportFailed
+      userFacingErrors.packageExportFailed,
+      true
     );
     if (result.canceled) return result;
     if (!result.path) {
