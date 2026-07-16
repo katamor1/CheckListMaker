@@ -453,3 +453,10 @@ Electron画面、通知、事前検査、ファイルダイアログ、利用者
 - 文書内容とファイルパスをログやエラーへ不用意に出さない
 - 外部依存は最小限にし、バージョンを固定する
 - 自動検証に合格しても、手動受入なしにリリース完了と宣言しない
+
+## 日本語UI文言の検証
+
+- [日本語UI文言設計](docs/superpowers/specs/2026-07-16-electron-japanese-ui-copy-design.md)
+- [Windows目視確認チェックリスト](docs/testing/electron-japanese-ui-copy-checklist.md)
+
+自動検証では型検査、Vitest、サンプル検証、本番ビルドを確認します。キーボード操作と100％、150％、200％表示倍率は、チェックリストへ実機証跡を記録するまで未完了です。
