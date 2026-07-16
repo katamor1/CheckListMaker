@@ -20,7 +20,7 @@ export const GENERIC_USER_PRESENTATION: UserFacingErrorPresentation = Object.fre
 
 export const GENERIC_USER_MESSAGE = GENERIC_USER_PRESENTATION.message;
 
-export const KNOWN_USER_ERROR_CODES = new Set([
+export const KNOWN_USER_ERROR_CODES: ReadonlySet<string> = new Set([
   'INVALID_ARGUMENT',
   'OUTPUT_NOT_ALLOWED',
   'WINDOW_UNAVAILABLE',
@@ -36,7 +36,7 @@ export const KNOWN_USER_ERROR_CODES = new Set([
   'TEMPLATE_SAVE_FAILED',
   'TEMPLATE_OPEN_FAILED',
   'INTERNAL_ERROR'
-] as const);
+]);
 
 const validText = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0 && value.length <= 2_000;
@@ -99,7 +99,7 @@ export const runIpcOperation = async <T>(
   } catch (error) {
     if (
       error instanceof UserFacingError &&
-      KNOWN_USER_ERROR_CODES.has(error.code as never) &&
+      KNOWN_USER_ERROR_CODES.has(error.code) &&
       isUserFacingErrorPresentation(error.presentation)
     ) {
       if (error.cause !== undefined) reportUnexpected(error.cause);
