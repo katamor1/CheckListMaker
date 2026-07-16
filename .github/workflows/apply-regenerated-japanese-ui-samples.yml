@@ -1,0 +1,85 @@
+name: Apply regenerated Japanese UI sample projects
+
+on:
+  push:
+    branches:
+      - agent/japanese-ui-copy
+    paths:
+      - .github/workflows/apply-regenerated-japanese-ui-samples.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/japanese-ui-copy
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download diagnostic regeneration artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/sample-regeneration" | Out-Null
+          gh api repos/${{ github.repository }}/actions/artifacts/8381879859/zip > "$env:RUNNER_TEMP/sample-regeneration.zip"
+          Expand-Archive -LiteralPath "$env:RUNNER_TEMP/sample-regeneration.zip" -DestinationPath "$env:RUNNER_TEMP/sample-regeneration" -Force
+
+      - name: Apply regenerated project containers
+        shell: pwsh
+        run: |
+          $root = "$env:RUNNER_TEMP/sample-regeneration"
+          $destination = 'samples/ja-machine-control-design-review/projects'
+          New-Item -ItemType Directory -Force $destination | Out-Null
+          foreach ($name in @('existing-document-demo.clmproj', 'document-generation-demo.clmproj')) {
+            $candidates = Get-ChildItem -LiteralPath $root -Recurse -File -Filter $name
+            if ($candidates.Count -eq 0) { throw "Artifact does not contain $name" }
+            $preferred = $candidates |
+              Where-Object { $_.FullName -match 'regenerated|actual|new' } |
+              Select-Object -First 1
+            if (-not $preferred) { $preferred = $candidates | Sort-Object FullName | Select-Object -Last 1 }
+            Copy-Item -LiteralPath $preferred.FullName -Destination (Join-Path $destination $name) -Force
+          }
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Verify regenerated samples and complete gate
+        shell: pwsh
+        run: |
+          npm run build
+          node samples/tools/sample-projects.mjs --check
+          npm run typecheck
+          npm test
+          npm run verify:samples
+          npm run build
+
+      - name: Commit verified sample containers
+        shell: pwsh
+        run: |
+          git config user.name 'checklistmaker-ci'
+          git config user.email 'checklistmaker-ci@users.noreply.github.com'
+          git add samples/ja-machine-control-design-review/projects/*.clmproj
+          if (-not (git diff --cached --quiet)) {
+            git commit -m 'test: refresh deterministic sample projects'
+            git push origin HEAD:agent/japanese-ui-copy
+          }
